@@ -1,0 +1,17 @@
+name = "James"
+version = "0.0.0"
+authors = ["Vasilii Vadimov"]
+
+[deps]
+ArgCheck = "dce04be8-c92d-5529-be00-80e4d2c0e197"
+BlockArrays = "8e7c35d0-a365-5155-bbbb-fb81a777f24e"
+DescriptorSystems = "a81e2ce2-54d1-11eb-2c75-db236b00f339"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MatrixEquations = "99c1a7ee-ab34-5fd5-8076-27c950a045f4"
+Polynomials = "f27b6e38-b328-58d1-80ce-0feddd5e7a45"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
