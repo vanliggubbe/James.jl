@@ -1,98 +1,3 @@
-function aaa_odd(
-    a :: Real, f :: Function;
-    ε :: Real = 1e-12, n_iter :: Int = 40, split :: Int = 10
-)
-    xs = collect(LinRange(0.0, a, split + 2)[2 : end])
-    fs = f.(xs)
-    gs = zero(fs)
-
-    XS = eltype(xs)[]
-    FS = eltype(fs)[]
-    js = collect(1 : length(xs))
-    local WS
-    for i in 1 : n_iter
-        _, j = findmax(i -> norm(fs[i] - gs[i]), js)
-        jj = js[j]
-        deleteat!(js, j)
-        push!(XS, xs[jj])
-        push!(FS, fs[jj])
-            
-        left = xs .< XS[end]
-        y = sum(left) == 0 ? 0.0 : maximum(xs[left])
-        append!(xs, LinRange(y, XS[end], split + 2)[2 : end - 1])
-        append!(fs, f.(xs[end - split + 1 : end]))
-        append!(js, length(xs) - split + 1 : length(xs))
-
-        right = xs .> XS[end]
-        if sum(right) != 0
-            y = minimum(xs[right])
-            append!(xs, LinRange(XS[end], y, split + 2)[2 : end - 1])
-            append!(fs, f.(xs[end - split + 1 : end]))
-            append!(js, length(xs) - split + 1 : length(xs))
-        end
-
-        A = [
-            (
-                (FS[k] - fs[α]) / (xs[α] - XS[k]) +
-                (FS[k] + fs[α]) / (xs[α] + XS[k])
-            ) for α in js, k in eachindex(XS, FS)
-        ]
-        _, __, V = svd!(A)
-        WS = V[:, end]
-
-        resize!(gs, length(fs))
-        gs .= fs
-        for α in js
-            gs[α] = sum(
-                W * F / (xs[α] - X) + W * F / (xs[α] + X)
-                for (X, F, W) in zip(XS, FS, WS)
-            ) / sum(
-                W / (xs[α] - X) - W / (xs[α] + X)
-                for (X, W) in zip(XS, WS)
-            )
-        end
-        err = maximum(norm.(fs - gs))
-        if err < ε / 2
-            break
-        end
-    end
-
-    #XS = XS[abs.(WS) .> ε]
-    #FS = FS[abs.(WS) .> ε]
-    #WS = WS[abs.(WS) .> ε]
-
-    # get poles
-    B = Matrix(1.0I, length(WS) + 1, length(WS) + 1)
-    B[1, 1] = 0.0
-    E = zeros(promote_type(eltype(FS), eltype(XS)), size(B))
-    E[1, 2 : end] .= WS
-    E[2 : end, 1] .= XS
-    E[2 : end, 2 : end] = Diagonal(XS .^ 2)
-    pol = map(sqrt ∘ complex, filter(isfinite, eigvals(E, B)))
-    pol = [pol; -pol]
-
-    # get residues
-    num = [
-        sum(
-            W * F / (p - X) + W * F / (p + X)
-            for (X, F, W) in zip(XS, FS, WS)
-        )
-        for p in pol
-    ]
-    den = [
-        sum(
-            -W / (p - X) ^ 2 + W / (p + X) ^ 2
-            for (X, W) in zip(XS, WS)
-        )
-        for p in pol
-    ]
-    res = num ./ den
-
-    # get linear part
-    lin = (transpose(WS) * FS) / (transpose(WS) * XS)
-    return lin + ε, pol, res
-end
-
 function aaa_bose(T, ε; aaa_kwargs...)
     bose(x) = (coth(x / (2 * T)) - 2 * T / x) / x
     return aaa_symm(bose, T; ε = ε, f_symm = identity, w_symm = -1, aaa_kwargs...)
@@ -133,6 +38,7 @@ function bose_factor(
         zs, sum(w * f * x for (x, w, f) in zip(xs, fs, ws)) / sum(w * x for (x, w) in zip(xs, ws))
     end
 
+    # find roots of the numerator
     roots = let
         A = zeros(TYPE, 2 * n + 1, 2 * n + 1)
         B = zeros(TYPE, 2 * n + 1, 2 * n + 1)
@@ -154,9 +60,9 @@ function bose_factor(
 
         roots = filter(isfinite, eigvals(A, B))
         if any(isreal, roots)
-            error("
+            display(roots[isreal.(roots)])
+            error("Rational approximation for n(ω) * ω is not positive. Try increasing δ.")
         end
-        @assert !any(isreal, roots)
         filter(isneg ∘ imag, filter(isfinite, eigvals(A, B)))
     end
     @assert length(poles) + 1 == length(roots)
@@ -165,28 +71,4 @@ function bose_factor(
         FactoredPolynomial(Dict(root => 1 for root in roots)) //
         FactoredPolynomial(Dict(pole => 1 for pole in poles))
     )
-    # find AAA approximation for coth
-    #=
-    τ, νs, rs = aaa_odd(Λ, x -> coth(x / (2 * T)) - 2 * T / x; ε)
-    bose(x) = τ * x + 2 * T / x + sum(rs ./ (x .- νs))
-
-    # find zeros of AAA approximation
-    # τ ω + 2T / ω + sum_k r_k / (ω - ν_k) + 1 = 0
-    B = Matrix(1.0I, length(νs) + 2, length(νs) + 2)
-    B[1, 1] = -τ
-
-    E = zeros(ComplexF64, size(B))
-    E[1, 2] = 2 * T
-    E[1, 3 : end] .= rs
-    E[2 : end, 1] .= 1
-    for (i, ν) in enumerate(νs)
-        E[i + 2, i + 2] = ν
-    end
-    E[1, 1] = 1
-    roots = filter(isfinite, eigvals(E, B))
-    return (
-        sqrt(τ / 2) * FactoredPolynomial(Dict(root => 1 for root in roots[imag(roots) .< 0])) //
-        FactoredPolynomial(Dict(root => 1 for root in νs[imag(νs) .< 0]))
-    )
-    =#
 end

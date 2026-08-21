@@ -15,12 +15,18 @@ using Test
         for x in LinRange(-10 * T, 10 * T, 8)
             @test (f_approx(x) - f_exact(x)) < sqrt(eps(Float64))
         end
-        #=
-        f_approx = bose_factor(T; δ = 1e-4)
-        g_exact(x) = (coth(x / (2.0 * T)) * x + x) / 2
-        for x in LinRange(-5 * T, 5 * T, 4)
-            println(x, " ", abs2(f_approx(x)), " ", g_exact(x))
-        end
-        =#
     end
+end
+
+@testset "bose factorization" begin
+    for T in [1, 2, 3]
+        f = bose_factor(T; ε = 1e-8, δ = 5e-6, aaa_kwargs = (
+            norm_weight = (x -> 1e-3 + (20 * T) ^ 2 / (x ^ 2 + (20 * T) ^ 2)),
+        ))
+        g_exact(x) = (coth(x / 2 / T) + 1) * x / 2
+
+        for x in LinRange(-10 * T, 10 * T, 8)
+            @test isapprox(abs2(f(x)) / x, g_exact(x) / x; atol = 1e-4, rtol = 1e-5)
+        end
+    end 
 end
