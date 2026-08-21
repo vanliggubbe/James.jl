@@ -1,17 +1,25 @@
-# function which always returns a constant
-
-struct ConstFun{T} <: Function
-    val :: T
-end
-
-(f :: ConstFun)(:: Any) = f.val
-
 # Auxiliary functions
 
 @inline ispos(x :: Real) = (x > zero(x))
 @inline isneg(x :: Real) = (x < zero(x))
 @inline isnpos(x :: Real) = !ispos(x)
 @inline isnneg(x :: Real) = !isneg(x)
+
+isinside(x, seg) = let (l, r) = seg; l < x < r; end
+
+# function which always returns a constant
+struct ConstFun{T} <: Function
+    val :: T
+end
+
+(f :: ConstFun)(:: Any) = f.val
+
+# some pre-defined weights for AAA algorithm
+gaussian(σ)                 = exp ∘ Base.Fix2(*, -0.5) ∘ Base.Fix2(^, 2) ∘ Base.Fix2(/, σ)
+lorenzian(σ)                = Base.Fix1(/, σ ^ 2) ∘ Base.Fix2(+, σ ^ 2) ∘ Base.Fix2(^, 2)
+box(σ)                      = Base.Fix2(isinside, (-σ, σ))
+box(l, r)                   = Base.Fix2(isinside, (l, r))
+add_background(val, weight) = Base.Fix1(+, val) ∘ weight
 
 macro onlyif(val, ex)
     quote

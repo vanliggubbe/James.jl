@@ -11,7 +11,7 @@ include("aaa.jl")
 include("bsd.jl")
 include("bose.jl")
 
-export ConstFun
+export ConstFun, gaussian, lorenzian, box, add_background
 export bose_factor
 export BathSpectralDensity
 export correlation_factorization
