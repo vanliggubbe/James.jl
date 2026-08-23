@@ -1,4 +1,4 @@
-struct BathSpectralDensity{
+struct FactorizedBSD{
     T <: Real,
     ML <: AbstractMatrix{T},
     MM <: AbstractMatrix{T}, 
@@ -8,101 +8,99 @@ struct BathSpectralDensity{
     M :: MM
     R :: MR
 
-    function BathSpectralDensity(L, M, R)
+    function FactorizedBSD(L, M, R)
         @argcheck ishurwitz(M)
         new{eltype(L), typeof(L), typeof(M), typeof(R)}(L, M, R)
     end
 end
 
-spectral_factor(J :: BathSpectralDensity, ω) = J.L' * ((ω * I + im * J.M) \ J.R)
+spectral_factor(J :: FactorizedBSD, ω) = J.L' * ((ω * I + im * J.M) \ J.R)
 
-_J_call(J :: BathSpectralDensity, ω) = ω * spectral_factor(J, ω) * (spectral_factor(J, conj(ω)))'
-(J :: BathSpectralDensity)(ω) = _J_call(J, ω)
-(J :: BathSpectralDensity)(ω :: Real) = Hermitian(_J_call(J, ω))
+_J_call(J :: FactorizedBSD, ω) = ω * spectral_factor(J, ω) * (spectral_factor(J, conj(ω)))'
+(J :: FactorizedBSD)(ω) = _J_call(J, ω)
+(J :: FactorizedBSD)(ω :: Real) = Hermitian(_J_call(J, ω))
 
-function BathSpectralDensity(
-    J :: Function;
-    Ω :: Real = 1.0,
-    ε :: Real = 1e-7,
-    δ :: Real = (ε / 2),
-    aaa_kwargs
+"""
+    FactorizedBSD(J :: Function, Ω :: Real = 1.0)
+
+Construct a rational approximation of the bath spectral density and factorize it in form J(ω) = ω V(ω) [V(ω̄)]ᴴ. Approximation is construct using symmetrized AAA algorithm. 
+"""
+function FactorizedBSD(
+    J :: Function,
+    Ω :: Real = 1.0;
+    ε :: Real = sqrt(eps(Float64)),
+    δ :: Real = 100 * ε,
+    aaa_kwargs = (
+        norm_weight = add_background(ε / δ, lorenzian(Ω)),
+    ),
+    rank_threshold = sqrt(eps(Float64))
 )
+    @argcheck ispos(rank_threshold)
 
-    bsd(x :: Real) = (@onlyif ensure(J(x), isposdef ∘ Hermitian) / x ispos(x))
-    ωs_bsd,  ws_bsd,  fs_bsd  = aaa_symm(bsd, Ω; ε = ε / 2, f_symm = conj, w_symm = [1 0; 0 -1], aaa_kwargs...)
+    bsd(x :: Real) = ensure(J(x) / x, isposdef ∘ Hermitian, "Bath spectral density is not positive definite at positive frequencies")
+    xs, ws, fs  = aaa_symm(bsd, Ω; ε = ε / 2, f_symm = conj, w_symm = [1 0; 0 -1], aaa_kwargs...)
+    pol, res    = bsd_pol_res(xs, ws, fs)
+    P, A, Q     = bsd_realization(pol, res; residue_sv_threshold = rank_threshold)
 
-    #=
-    # Bath correlation functions
-    # S₊(ω) = J(ω) [coth(ω / 2T) + 1] / 2
-    # S₋(ω) = J(ω) [coth(ω / 2T) - 1] / 2
-    S(ω) = let J = Hermitian(J(ω)), bose = coth(ω / (2 * T))
-        @argcheck ispos(ω)
-        @argcheck isposdef(J)
-        [(J * (bose + 1) / 2) (J * (bose - 1) / 2)]
+    # solve for Q = im Σ P
+    H = Hermitian((im * P)' * Q)
+    @argcheck isposdef(H) "Bath spectral density is not positive definite at positive frequencies"
+    Λ, U = eigen(H)
+    reverse!(Λ)
+    rk = findlast(>(rank_threshold), Λ)
+    W = Q * (U[1 : rk, :])' * Diagonal(map(inv ∘ sqrt, Λ[1 : rk]))
+    P, A, Q, W
+end
+
+# find pole-residue expansion
+function bsd_pol_res(xs, ws, fs)
+    DTYPE = real(promote_type(eltype(xs), eltype(ws)))
+    n = length(xs)
+
+    A = zeros(DTYPE, 2 * n + 1, 2 * n + 1)
+    @inbounds for (i, (x, w)) in enumerate(zip(xs, ws))
+        A[2 * i + 0, 2 * i + 1] = x
+        A[2 * i + 1, 2 * i + 0] = -x
+        A[1, 2 * i + 0] = 2 * real(w)
+        A[1, 2 * i + 1] = -2 * imag(w)
+        A[2 * i + 0, 1] = one(eltype(A))
     end
+    B = zeros(DTYPE, 2 * n + 1, 2 * n + 1)
+    B .= I(size(B, 1))
+    B[1, 1] = zero(eltype(B))
+    pol = im * filter(isfinite, eigvals(A, B))
 
-
-    # Bath spectral density symmetry: J(-ω) = -[J(ω)]ᵀ
-    # S₊(-ω) = -[J(ω)]ᵀ [-coth(ω / 2T) + 1] / 2 = [S₋(ω)]ᵀ
-    # S₋(-ω) = -[J(ω)]ᵀ [-coth(ω / 2T) - 1] / 2 = [S₊(ω)]ᵀ
-    S_symm(S) = let S₊ = S[:, 1 : size(S, 1)], S₋ = S[:, size(S, 1) .+ (1 : size(S, 1))]
-        conj!([S₋ S₊])
-    end
-
-    bose(x) = (coth(x / (2 * T)) - 2 * T / x) / x
-        println("qwe")
-
-    return ωs_bsd, ws_bsd, fs_bsd
-
-    # get barycentric weights
-    ωs, ws, Ss, S̄s = let
-        ωs, ws, Ss = aaa_symm(S, Ω; ε = ε / 2, f_symm = S_symm, w_symm = [1 0; 0 -1], aaa_kwargs...)
-        ws = real(ws)
-
-        # remove too small weights
-        to_delete = findall(<(eps(eltype(ws))) ∘ abs, ws)
-        deleteat!(ωs, to_delete)
-        deleteat!(ws, to_delete)
-        deleteat!(Ss, to_delete)
-
-        S̄s = [conj(S[:, size(S, 1) .+ (1 : size(S, 1))]) for S in Ss]
-        Ss = [S[:, 1 : size(S, 1)] for S in Ss]
-        ωs, ws, Ss, S̄s
-    end
-    return ωs, ws, Ss, S̄s
-
-    # find poles of the barycentric approximation
-    # since we used symmetrized form, it's more accurate to look directly for poles
-    # bit hard to deal if high order poles are present
-    poles = let
-        TYPE = promote_type(eltype(ωs), eltype(ws))
-        n = length(ωs)
-        A = zeros(TYPE, n + 1, n + 1)
-        B = zeros(real(TYPE), n + 1, n + 1)
-        for (j, (x, w)) in enumerate(zip(ωs, ws))
-            A[j + 1, j + 1] = x ^ 2
-            A[1, j + 1] = w
-            A[j + 1, 1] = x
-            B[j + 1, j + 1] = one(eltype(B))
-        end
-        
-        iscomplex(x) = !isreal(x)
-        ret = filter(iscomplex, map(sqrt ∘ complex, filter(isfinite, eigvals(A, B))))
-        #ret = map(sqrt ∘ complex, filter(isfinite, eigvals(A, B)))
-        append!(ret, -ret)
-        sort!(ret, by = imag)
-    end
-    residues = [
-        sum(
-            w * (S / (pole - x) - S̄ / (pole + x))
-            for (w, x, S, S̄) in zip(ws, ωs, Ss, S̄s)
+    res = [
+        sum( 
+            let wf = w * f
+                (wf / (p - x)) + (conj(wf) / (p + x))
+            end
+            for (x, w, f) in zip(xs, ws, fs)
         ) / sum(
-            w * (-inv((pole - x) ^ 2) + inv((pole + x) ^ 2))
-            for (w, x) in zip(ws, ωs)
-        )
-        for pole in poles
+            -w / (p - x) ^ 2 - conj(w) / (p + x) ^ 2
+            for (x, w) in zip(xs, ws)
+        ) for p in pol
     ]
-    constant = sum(w * (S - S̄) for (w, S, S̄) in zip(ws, Ss, S̄s)) + I * δ / 2
-    return poles, residues, constant
-    =#
+    indices = findall(isneg ∘ imag, pol)
+    pol[indices], res[indices]
+end
+
+# construct a complex realization of a retarded part of bath spectral density
+function bsd_realization(poles, residues; residue_sv_threshold = sqrt(eps(real(eltype(poles), deep_eltype(residues)))))
+    P = Matrix{deep_eltype(residues)}(undef, size(first(residues), 1), 0)
+    Q = Matrix{deep_eltype(residues)}(undef, size(first(residues), 1), 0)
+    A = eltype(poles)[]
+    for (p, r) in zip(poles, residues)
+        U, S, V = svd(r)
+        rk = findlast(>(residue_sv_threshold), S)
+        if !(rk isa Nothing)
+            U = U[:, 1 : rk] * Diagonal(sqrt.(S[1 : rk]))
+            V = V[:, 1 : rk] * Diagonal(sqrt.(S[1 : rk]))
+
+            append!(A, fill(p, rk))
+            P = hcat(P, U)
+            Q = hcat(Q, V)
+        end
+    end
+    Matrix(P'), Diagonal(A), Matrix(Q')
 end

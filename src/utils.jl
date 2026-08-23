@@ -12,7 +12,7 @@ struct ConstFun{T} <: Function
     val :: T
 end
 
-(f :: ConstFun)(:: Any) = f.val
+(f :: ConstFun)(:: Any...) = f.val
 
 # some pre-defined weights for AAA algorithm
 gaussian(σ)                 = exp ∘ Base.Fix2(*, -0.5) ∘ Base.Fix2(^, 2) ∘ Base.Fix2(/, σ)
@@ -53,3 +53,7 @@ ishurwitz(A :: AbstractMatrix, :: Val{false}) = ishurwitz(A)
 Base.isnan(a :: AbstractArray) = any(isnan, a)
 
 
+deep_eltype(:: Type{T}) where {T} = let ET = eltype(T);
+    T == ET ? T : deep_eltype(ET)
+end
+deep_eltype(:: T) where {T} = deep_eltype(T)

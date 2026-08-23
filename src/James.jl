@@ -16,7 +16,6 @@ export bose_factor
 export BathSpectralDensity
 export correlation_factorization
 export HME_matrices
-export bath_correlation_function
 
 function correlation_factorization(J, T, Λ; ε = 1e-12)
     # factorize bose approximation
