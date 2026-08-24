@@ -4,7 +4,7 @@ using LinearAlgebra
 using Polynomials
 using BlockArrays
 using ArgCheck
-using DescriptorSystems
+using MatrixEquations
 
 include("utils.jl")
 include("aaa.jl")
