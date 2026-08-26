@@ -1,17 +1,19 @@
-function aaa_bose(T, ε; aaa_kwargs...)
-    bose(x) = (coth(x / (2 * T)) - 2 * T / x) / x
-    return aaa_symm(bose, T; ε = ε, f_symm = identity, w_symm = -1, aaa_kwargs...)
+function aaa_bose(T, ε, δ = 0, Ω = T; aaa_kwargs...)
+    bose(x) = (coth(x / (2 * T)) - 2 * T / x) / x + δ
+    return aaa_symm(bose, Ω; ε = ε, f_symm = identity, w_symm = -1, aaa_kwargs...)
 end
 
 function bose_factor(
         temperature;
+        Ω :: Real = temperature,
         ε :: Real = sqrt(eps(Float64)),
         δ :: Real = (ε / 2),
         aaa_kwargs = ()
 )
+    @argcheck ispos(δ)
     # get AAA approximation for coth(x / 2T)
-    xs, ws, fs = aaa_bose(temperature, ε / 2; aaa_kwargs...)
-    fs .+= δ
+    xs, ws, fs = aaa_bose(temperature, ε / 2, δ, Ω; aaa_kwargs...)
+    #fs .+= δ
 
     TYPE = promote_type(eltype(xs), eltype(ws), eltype(fs))
     n = length(xs)
@@ -60,8 +62,8 @@ function bose_factor(
 
         roots = filter(isfinite, eigvals(A, B))
         if any(isreal, roots)
-            display(roots[isreal.(roots)])
-            error("Rational approximation for n(ω) * ω is not positive. Try increasing δ.")
+            @error "Roots on the real axis: $(real(filter(isreal, roots)))"
+            error("Rational approximation for n_bose(-ω) * ω is not positive. Try increasing δ.")
         end
         filter(isneg ∘ imag, filter(isfinite, eigvals(A, B)))
     end

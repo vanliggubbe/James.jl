@@ -1,5 +1,5 @@
 # weight functions for different scenarios
-function aaa_weights(
+function _aaa_weights(
     xs :: AbstractVector{<: Real},
     fs :: AbstractVector{<: Number},
     f̄s :: AbstractVector{<: Number},
@@ -18,7 +18,7 @@ function aaa_weights(
     return V[:, end], w_symm * V[:, end]
 end
 
-function aaa_weights(
+function _aaa_weights(
     xs :: AbstractVector{<: Real},
     fs :: AbstractVector{<: AbstractArray},
     f̄s :: AbstractVector{<: AbstractArray},
@@ -42,7 +42,7 @@ function aaa_weights(
     return V[:, end], w_symm * V[:, end]
 end
 
-function aaa_weights(
+function _aaa_weights(
     xs :: AbstractVector{<: Real},
     fs :: AbstractVector{<: Number},
     f̄s :: AbstractVector{<: Number},
@@ -76,7 +76,7 @@ function aaa_weights(
     return ws, [[1; -im]' * w_symm * [real(w); imag(w)] for w in ws]
 end
 
-function aaa_weights(
+function _aaa_weights(
     xs :: AbstractVector{<: Real},
     fs :: AbstractVector{<: AbstractArray},
     f̄s :: AbstractVector{<: AbstractArray},
@@ -106,15 +106,20 @@ function aaa_weights(
     return ws, [[1; -im]' * w_symm * [real(w); imag(w)] for w in ws]
 end
 
-function aaa_poles(xs, ws, w_symm :: Number)
+@generated function aaa_weights(xs, fs, f̄s, js, αs, w_symm)
+    FTYPE = promote_type(deep_eltype(fs), deep_eltype(f̄s))
+    if FTYPE <: Real
+        return :(_aaa_weights(xs, fs, f̄s, js, αs, first(w_symm)))
+    else
+        return :(_aaa_weights(xs, fs, f̄s, js, αs, w_symm))
+    end
 end
 
-#function aaa_poles(xs, ws, w_symm :: AbstractMatrix)
-#end
 
 function aaa_symm(
     f :: Function,
     Λ :: Real;
+    finite :: Bool = false,
     ε :: Real = 1e-8,
     n_iter :: Int = 40,
     n_split :: Function = ConstFun(10),
@@ -127,18 +132,20 @@ function aaa_symm(
     @argcheck ispos(ε)
     @argcheck ispos(n_iter)
     @argcheck isone(w_symm * w_symm)
-
-    xs = collect(LinRange(0.0, π / 2, ensure(n_split(0), ispos) + 2)[begin + 1 : end - 1])
+    
+    φ_max = finite ? π / 4 : π / 2
+    xs = collect(LinRange(0.0, φ_max, ensure(n_split(0), ispos) + 2)[begin + 1 : end - 1])
     zs = Λ * tan.(xs)
-    fs = f.(Λ * tan.(xs))
+    fs = f.(zs)
     f̄s = [f_symm(copy(f)) for f in fs]
 
-    gs = [zero(f) for f in fs]
+    gs = [2 * f for f in fs]
 
     js = collect(1 : length(xs))    # indices of the probe points
     αs = eltype(js)[]               # indices of the support points
 
     local ws, w̄s                    # weights
+    local er
     for it in 1 : n_iter
         # find the new support point
         er, j = let
@@ -154,7 +161,7 @@ function aaa_symm(
         # find left and right points closest to the support point to be added
         x = xs[jj]
         yl, yr = let left = filter(<(x), xs[αs]), right = filter(>(x), xs[αs])
-            maximum(left; init = zero(eltype(xs))), minimum(right; init = π / 2)
+            maximum(left; init = zero(eltype(xs))), minimum(right; init = φ_max)
         end
         push!(αs, jj)
 
@@ -169,14 +176,13 @@ function aaa_symm(
         resize!(js, cur)
 
         # split the intervals, add more points
-        
         nn = ensure(n_split(it), ispos)
         for new_xs in [
                 LinRange(yl, x, nn + 2)[begin + 1 : end - 1],
                 LinRange(x, yr, nn + 2)[begin + 1 : end - 1]
         ]
             new_zs = Λ * tan.(new_xs)
-            new_fs = f.(new_zs)
+            new_fs = map(f, new_zs)
             append!(js, length(xs) .+ (1 : nn))
             append!(xs, new_xs)
             append!(zs, new_zs)
@@ -197,5 +203,5 @@ function aaa_symm(
             )
         end
     end
-    return zs[αs], ws, fs[αs]
+    return zs[αs], ws, fs[αs], er
 end
