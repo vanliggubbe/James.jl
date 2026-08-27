@@ -82,10 +82,25 @@ function bose_factor(
         end
         filter(isneg ∘ imag, filter(isfinite, eigvals(A, B)))
     end
-    @assert length(poles) + 1 == length(roots)
+
+    @check length(poles) + 1 == length(roots)
+    @check isalmostreal(im * poles)
+
+    regular = sqrt(constant / 2) * [-sum(roots), one(eltype(roots))]
+    residues = [
+        exp(
+            sum(log(p - r) for r in roots) -
+            sum(j == i ? zero(q) : log(p - q) for (j, q) in enumerate(poles))
+        )
+        for (i, p) in enumerate(poles)
+    ] * sqrt(constant / 2)
+    left = map(sqrt ∘ abs, residues)
     return (
-        sqrt(constant / 2) * 
-        FactoredPolynomial(Dict(root => 1 for root in roots)) //
-        FactoredPolynomial(Dict(pole => 1 for pole in poles))
+        left, Diagonal(real(im * poles)), residues ./ left, regular
     )
+    #return (
+    #    sqrt(constant / 2) * 
+    #    FactoredPolynomial(Dict(root => 1 for root in roots)) //
+    #    FactoredPolynomial(Dict(pole => 1 for pole in poles))
+    #)
 end
