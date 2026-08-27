@@ -1,18 +1,33 @@
-function aaa_bose(T, ε, δ = 0, Ω = T; aaa_kwargs...)
+function aaa_bose(
+        T,
+        Ω = T,
+        δ = default_atol(promote_type(typeof(T), typeof(Ω))),
+        atol = default_atol(promote_type(typeof(T), typeof(Ω))),
+        rtol = (
+            iszero(atol) ?
+            default_atol(promote_type(typeof(T), typeof(Ω))) :
+            default_rtol(promote_type(typeof(T), typeof(Ω)))
+        );
+        aaa_kwargs...
+)
     bose(x) = (coth(x / (2 * T)) - 2 * T / x) / x + δ
-    return aaa_symm(bose, Ω; ε = ε, f_symm = identity, w_symm = -1, aaa_kwargs...)
+    return aaa_symm(bose, Ω; atol, rtol, f_symm = identity, w_symm = -1, aaa_kwargs...)
 end
 
 function bose_factor(
-        temperature;
-        Ω :: Real = temperature,
+        temperature :: Real,
+        Ω :: Real = temperature;
         ε :: Real = sqrt(eps(Float64)),
         δ :: Real = (ε / 2),
-        aaa_kwargs = ()
+        aaa_kwargs = (
+            n_iter = 50,
+            norm_weight = ConstFun(1),
+        )
 )
+    @argcheck ispos(temperature)
     @argcheck ispos(δ)
     # get AAA approximation for coth(x / 2T)
-    xs, ws, fs = aaa_bose(temperature, ε / 2, δ, Ω; aaa_kwargs...)
+    xs, ws, fs = aaa_bose(temperature, Ω, δ, ε / 2; aaa_kwargs...)
     #fs .+= δ
 
     TYPE = promote_type(eltype(xs), eltype(ws), eltype(fs))

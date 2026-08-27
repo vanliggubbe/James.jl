@@ -13,7 +13,7 @@ include("bose.jl")
 
 export ConstFun, gaussian, lorenzian, box, add_background
 export bose_factor
-export BathSpectralDensity
+export CausalBSD, FactorizedBSD
 export correlation_factorization
 export HME_matrices
 

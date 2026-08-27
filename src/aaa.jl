@@ -120,7 +120,8 @@ function aaa_symm(
     f :: Function,
     Λ :: Real;
     finite :: Bool = false,
-    ε :: Real = 1e-8,
+    atol :: Real = default_atol(Λ),
+    rtol :: Real = iszero(atol) ? default_atol(Λ) : default_rtol(Λ),
     n_iter :: Int = 40,
     n_split :: Function = ConstFun(10),
     f_symm :: Function = conj,
@@ -129,12 +130,14 @@ function aaa_symm(
     norm_weight :: Function = ConstFun(1),
 )
     @argcheck ispos(Λ)
-    @argcheck ispos(ε)
+    @argcheck isnneg(atol)
+    @argcheck isnneg(rtol)
     @argcheck ispos(n_iter)
     @argcheck isone(w_symm * w_symm)
     
-    φ_max = finite ? π / 4 : π / 2
-    xs = collect(LinRange(0.0, φ_max, ensure(n_split(0), ispos) + 2)[begin + 1 : end - 1])
+    RTYPE = float(typeof(Λ))
+    φ_max = finite ? π / RTYPE(4) : π / RTYPE(2)
+    xs = collect(LinRange(zero(RTYPE), φ_max, ensure(n_split(0), ispos) + 2)[begin + 1 : end - 1])
     zs = Λ * tan.(xs)
     fs = f.(zs)
     f̄s = [f_symm(copy(f)) for f in fs]
@@ -146,13 +149,15 @@ function aaa_symm(
 
     local ws, w̄s                    # weights
     local er
+    
     for it in 1 : n_iter
         # find the new support point
         er, j = let
             fun(j) = ensure(point_norm(fs[j] - gs[j]), isnneg) * ensure(norm_weight(zs[j]), isnneg)
             findmax(fun, js)
         end
-        if er < ε
+        nrm = maximum(point_norm(f) * norm_weight(z) for (f, z) in zip(fs, zs))
+        if er < max(atol, rtol * nrm)
             break
         end
         jj = js[j]

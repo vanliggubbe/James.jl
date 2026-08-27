@@ -1,9 +1,9 @@
 using James
 using Test
 
-@testset "bose approximation" begin
+@testset "Bose approximation" begin
     for T in [1, 2]
-        xs, ws, fs = James.aaa_bose(T, sqrt(eps(Float64)))
+        xs, ws, fs = James.aaa_bose(T)
         f_approx(z) = sum(
             f * w / (z - x) - f * w / (z + x)
             for (x, w, f) in zip(xs, ws, fs)
@@ -18,7 +18,7 @@ using Test
     end
 end
 
-@testset "bose factorization" begin
+@testset "Bose factorization" begin
     for T in [1, 2, 3]
         f = bose_factor(T; ε = 1e-8, δ = 5e-6, aaa_kwargs = (
             norm_weight = (x -> 1e-3 + (20 * T) ^ 2 / (x ^ 2 + (20 * T) ^ 2)),
@@ -29,4 +29,13 @@ end
             @test isapprox(abs2(f(x)) / x, g_exact(x) / x; atol = 1e-4, rtol = 1e-5)
         end
     end 
+end
+
+@testset "BSD factorization" begin
+    J = CausalBSD([1 1], ones(1, 1), [1 1])
+    F = FactorizedBSD(J)
+
+    for x in LinRange(-10, 10, 8)
+        @test isapprox(J(x), F(x))
+    end
 end
