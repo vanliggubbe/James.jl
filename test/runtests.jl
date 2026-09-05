@@ -1,4 +1,4 @@
-using James
+using Jame
 using Test
 using Random
 using LinearAlgebra
@@ -7,7 +7,7 @@ rng = MersenneTwister(0)
 
 @testset "Bose approximation" begin
     for T in [1, 2]
-        xs, ws, fs = James.aaa_bose(T)
+        xs, ws, fs = Jame.aaa_bose(T)
         f_approx(z) = sum(
             f * w / (z - x) - f * w / (z + x)
             for (x, w, f) in zip(xs, ws, fs)
