@@ -86,7 +86,7 @@ function bose_factor(
     @check length(poles) + 1 == length(roots)
     @check isalmostreal(im * poles)
 
-    regular = sqrt(constant / 2) * [sum_kbn(poles)-sum_kbn(roots), one(eltype(roots))]
+    regular = sqrt(constant / 2) * [sum_kbn(poles) - sum_kbn(roots), one(eltype(roots))]
     residues = [
         exp(
             sum_kbn([log(p - r) for r in roots]) -

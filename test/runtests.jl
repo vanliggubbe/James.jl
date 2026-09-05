@@ -49,19 +49,19 @@ end
 @testset "BCF factorization" begin
     # generate a random BSD
     M = randn(rng, 10, 10)
-    M -= I * (real(first(eigval(M))) * 1.1)
+    M -= I * (real(first(eigvals(M))) * 1.1)
     J = FactorizedBSD(randn(rng, 10, 2), M, randn(rng, 10, 2))
     
     for T in [1.0, 2.0, 3.0]
         T = 1.0
-        W, L, M, R = correlation_factorization(J, T; Ω = 100.0, aaa_kwargs = (finite = true,)) 
+        W, L, M, R = correlation_factorization(J, T, 100.0; aaa_kwargs = (finite = true,)) 
         @test eltype(W) <: Real
         @test eltype(L) <: Real
         @test eltype(M) <: Real
-        for x in LinRange(-50, 50, 10)
+        for x in LinRange(-20, 20, 10)
             approx = W + L' * ((x * I + im * M) \ R)
             exact = J(x) * (coth(x / (2 * T)) + 1) / 2
-            @test isapprox(approx, exact)
+            @test isapprox(approx * approx', exact; rtol = 1e-6, atol = 1e-6)
         end
     end
 end

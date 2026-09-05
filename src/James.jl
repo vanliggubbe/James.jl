@@ -1,7 +1,6 @@
 module James
 
 using LinearAlgebra
-using Polynomials
 using BlockArrays
 using ArgCheck
 using MatrixEquations
@@ -18,27 +17,29 @@ export CausalBSD, FactorizedBSD
 export correlation_factorization
 export HME_matrices
 
-function correlation_factorization(J :: FactorizedBSD, T :: Real; kwargs...)
+function correlation_factorization(J :: FactorizedBSD, T :: Real, Ω :: Real = T; kwargs...)
     # factorize bose approximation
-    L, M, R, reg = let (L, M, R, reg) = bose_factor(T; kwargs...), d = size(J.R, 2)
+    L, M, R, reg = let (L, M, R, reg) = bose_factor(T, Ω; kwargs...), d = size(J.R, 2)
         kron(L, I(d)), kron(M, I(d)), kron(R, I(d)), reg
     end
+    # in principle should always be valid, but who knows
+    @check isalmostreal(reg[2])
 
     LTYPE = eltype(J.L)
     MTYPE = promote_type(eltype(J.M), eltype(M), eltype(J.R), eltype(L))
     return (
-        J.L' * J.R * reg[2],
+        J.L' * J.R * real(reg[2]),
         [
             J.L;
             zeros(LTYPE, size(L, 1), size(J.L, 2))
         ],
         [
-            J.M                                     (J.R * L');
+            J.M                                     (-J.R * L');
             zeros(MTYPE, size(M, 1), size(J.M, 2))  M
         ],
         [
-            (J.R * reg[1] - im * J.M * J.R);
-            (-R)
+            (J.R * reg[1] - im * J.M * J.R * reg[2]);
+            -im * R
         ]
     )
 end

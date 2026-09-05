@@ -5,6 +5,8 @@ deep_eltype(:: Type{T}) where {T} = let ET = eltype(T);
 end
 deep_eltype(:: T) where {T} = deep_eltype(T)
 
+@inline concat(iterators...) = Iterators.flatten(iterators)
+
 @inline ispos(x :: Real) = (x > zero(x))
 @inline isneg(x :: Real) = (x < zero(x))
 @inline isnpos(x :: Real) = !ispos(x)
