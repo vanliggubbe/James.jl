@@ -52,7 +52,7 @@ function bose_factor(
         #     sum(-2 * w * x * z / (z ^ 2 - x ^ 2) ^ 2 for (x, w) in zip(xs, ws))
         #     for z in zs
         # ]
-        zs, sum(w * f * x for (x, w, f) in zip(xs, fs, ws)) / sum(w * x for (x, w) in zip(xs, ws))
+        zs, sum_kbn([w * f * x for (x, w, f) in zip(xs, fs, ws)]) / sum_kbn([w * x for (x, w) in zip(xs, ws)])
     end
 
     # find roots of the numerator
@@ -73,7 +73,7 @@ function bose_factor(
             B[i * 2 + 0, i * 2 + 0] = one(eltype(B))
             B[i * 2 + 1, i * 2 + 1] = one(eltype(B))
         end
-        A[1, 1] = 2 * sum(f * w * x for (f, w, x) in zip(fs, ws, xs))
+        A[1, 1] = 2 * sum_kbn([f * w * x for (f, w, x) in zip(fs, ws, xs)])
 
         roots = filter(isfinite, eigvals(A, B))
         if any(isreal, roots)
@@ -86,13 +86,12 @@ function bose_factor(
     @check length(poles) + 1 == length(roots)
     @check isalmostreal(im * poles)
 
-    regular = sqrt(constant / 2) * [-sum(roots), one(eltype(roots))]
+    regular = sqrt(constant / 2) * [sum_kbn(poles)-sum_kbn(roots), one(eltype(roots))]
     residues = [
         exp(
-            sum(log(p - r) for r in roots) -
-            sum(j == i ? zero(q) : log(p - q) for (j, q) in enumerate(poles))
-        )
-        for (i, p) in enumerate(poles)
+            sum_kbn([log(p - r) for r in roots]) -
+            sum_kbn([(j == i ? zero(q) : log(p - q)) for (j, q) in enumerate(poles)])
+        ) for (i, p) in enumerate(poles)
     ] * sqrt(constant / 2)
     left = map(sqrt ∘ abs, residues)
     return (

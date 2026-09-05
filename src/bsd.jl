@@ -10,7 +10,14 @@ struct FactorizedBSD{
 
     function FactorizedBSD(L, M, R)
         @argcheck ishurwitz(M, Val(false))
-        new{eltype(L), typeof(L), typeof(M), typeof(R)}(L, M, R)
+
+        T = promote_type(eltype(L), eltype(M), eltype(R))
+
+        L_new = eltype(L) != T ? convert.(T, L) : L
+        M_new = eltype(M) != T ? convert.(T, M) : M
+        R_new = eltype(R) != T ? convert.(T, R) : R
+
+        new{T, typeof(L_new), typeof(M_new), typeof(R_new)}(L_new, M_new, R_new)
     end
 end
 
@@ -33,9 +40,9 @@ struct CausalBSD{
         T = promote_type(eltype(L), eltype(M), real(eltype(R)))
         S = promote_type(T, eltype(R))
 
-        L_new = convert.(T, L)
-        M_new = convert.(T, M)
-        R_new = convert.(S, R)
+        L_new = eltype(L) != T ? convert.(T, L) : L
+        M_new = eltype(M) != T ? convert.(T, M) : M
+        R_new = eltype(R) != S ? convert.(S, R) : R
 
         new{T, S, typeof(L_new), typeof(M_new), typeof(R_new)}(L_new, M_new, R_new)
     end
@@ -105,11 +112,12 @@ function CausalBSD(
 )
     @argcheck tol_check(atol, rtol)
 
-    validate(J) = ispossemidef(J; atol, rtol)
-    bsd(x :: Real) = ensure(J(x) / x, validate, "Bath spectral density is not positive definite at positive frequencies")
-
     # make AAA approximation
-    xs, ws, fs  = aaa_symm(bsd, Ω; atol = atol / 2, rtol, f_symm = conj, w_symm = [1 0; 0 -1], aaa_kwargs...)
+    xs, ws, fs  = let
+        validate(J) = ispossemidef(J; atol, rtol)
+        bsd(x :: Real) = ensure(J(x) / x, validate, "Bath spectral density is not positive definite at positive frequencies")
+        aaa_symm(bsd, Ω; atol = atol / 2, rtol, f_symm = conj, w_symm = [1 0; 0 -1], aaa_kwargs...)
+    end
     pol, res    = _bsd_pol_res(xs, ws, fs)
     P, M, Q     = _bsd_realization(pol, res; atol, rtol)
 

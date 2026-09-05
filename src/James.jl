@@ -5,6 +5,7 @@ using Polynomials
 using BlockArrays
 using ArgCheck
 using MatrixEquations
+import KahanSummation: sum_kbn
 
 include("utils.jl")
 include("aaa.jl")
@@ -17,29 +18,28 @@ export CausalBSD, FactorizedBSD
 export correlation_factorization
 export HME_matrices
 
-function correlation_factorization(J, T, Λ; ε = 1e-12)
+function correlation_factorization(J :: FactorizedBSD, T :: Real; kwargs...)
     # factorize bose approximation
-    p₊ = bose_factor(T, Λ; ε)
-    @assert abs(imag(p₊.num.c)) < 1e-12
-    W = real(p₊.num.c) * (J.L' * J.R)
-    L = [J.L]
-    M = [J.M]
-    R = [p₊(-im * J.M) * J.R]
-    for (pol, res) in residues(p₊)[2]
-        Q, L′ = qr(J.L)
-        R′ = first(res) * (Q') * ((pol * I + im * J.M) \ J.R)
-        push!(L, L′[1 : size(L′, 2), :])
-        push!(M, -imag(pol) * I(size(J.L, 2)))
-        push!(R, R′[1 : size(L′, 2), :])
+    L, M, R, reg = let (L, M, R, reg) = bose_factor(T; kwargs...), d = size(J.R, 2)
+        kron(L, I(d)), kron(M, I(d)), kron(R, I(d)), reg
     end
+
+    LTYPE = eltype(J.L)
+    MTYPE = promote_type(eltype(J.M), eltype(M), eltype(J.R), eltype(L))
     return (
-        W,
-        reduce(vcat, L),
-        reduce(
-            (x, y) -> [x zeros(size(x, 1), size(y, 2)); zeros(size(y, 1), size(x, 2)) y],
-            M
-        ),
-        reduce(vcat, R)
+        J.L' * J.R * reg[2],
+        [
+            J.L;
+            zeros(LTYPE, size(L, 1), size(J.L, 2))
+        ],
+        [
+            J.M                                     (J.R * L');
+            zeros(MTYPE, size(M, 1), size(J.M, 2))  M
+        ],
+        [
+            (J.R * reg[1] - im * J.M * J.R);
+            (-R)
+        ]
     )
 end
 
