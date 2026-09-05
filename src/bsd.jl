@@ -21,6 +21,9 @@ struct FactorizedBSD{
     end
 end
 
+Base.eltype(:: Type{FactorizedBSD{T}}) where {T} = T
+Base.eltype(:: FactorizedBSD{T}) where {T} = T
+
 struct CausalBSD{
     T <: Real,
     S <: Union{T, Complex{T}},
@@ -60,7 +63,7 @@ _J_call(J :: FactorizedBSD, ω) = ω * spectral_factor(J, ω) * (spectral_factor
 function FactorizedBSD(
         J :: CausalBSD{T};
         atol :: Real = default_atol(T),
-        rtol :: Real = default_rtol(T, atol)
+        rtol :: Real = default_rtol(atol, T)
 ) where {T}
     Σ = _bsd_riccati_solution(J.L, J.M, J.M \ J.R; atol, rtol)
     @check isapprox(J.M \ J.R, Σ * J.L; atol, rtol)
@@ -105,7 +108,7 @@ function CausalBSD(
     J :: Function,
     Ω :: Real = 1.0;
     atol :: Real = default_atol(Ω),
-    rtol :: Real = default_rtol(Ω, atol),
+    rtol :: Real = default_rtol(atol, Ω),
     aaa_kwargs = (
         norm_weight = add_background(10 * atol, lorenzian(Ω)),
     ),
@@ -247,9 +250,9 @@ end
 function _bsd_realization(
         poles,
         residues;
-        atol :: Real = default_atol(promote_type(deep_eltype.((poles, residues))...)),
+        atol :: Real = default_atol(poles, residues),
         rtol :: Real = default_rtol(
-            promote_type(deep_eltype.((poles, residues))...), atol
+            atol, poles, residues
         )
 )
     PTYPE = real(deep_eltype(poles))
@@ -325,7 +328,7 @@ function _bsd_riccati_solution(
         P, A, Q; 
         atol :: Real = default_atol(promote_type(deep_eltype.((P, A, Q))...)),
         rtol :: Real = default_rtol(
-            promote_type(deep_eltype.((P, A, Q))...), atol
+            atol, promote_type(P, A, Q)
         )
 )
     if isempty(A)

@@ -54,7 +54,7 @@ end
     
     for T in [1.0, 2.0, 3.0]
         T = 1.0
-        W, L, M, R = correlation_factorization(J, T, 100.0; aaa_kwargs = (finite = true,)) 
+        W, L, M, R = bcf_factor(J, T, 100.0; aaa_kwargs = (finite = true,)) 
         @test eltype(W) <: Real
         @test eltype(L) <: Real
         @test eltype(M) <: Real

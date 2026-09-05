@@ -12,15 +12,18 @@ deep_eltype(:: T) where {T} = deep_eltype(T)
 @inline isnpos(x :: Real) = !ispos(x)
 @inline isnneg(x :: Real) = !isneg(x)
 
-default_atol(x) = (zero ∘ float ∘ real ∘ deep_eltype)(x)
-default_rtol(x) = (sqrt ∘ eps ∘ float ∘ real ∘ deep_eltype)(x)
-default_rtol(x, atol) = iszero(atol) ? default_rtol(x) : default_atol(x)
+default_atol(x...) = (zero ∘ float ∘ real)(promote_type(deep_eltype.(x)...))
+default_rtol(atol, x...) = (
+    iszero(atol) ? 
+    (sqrt ∘ eps ∘ float ∘ real)(promote_type(deep_eltype.(x)...)) :
+    default_atol(x)
+)
 @inline tol_check(a :: Real, r :: Real) = isnneg(a) && isnneg(r) && (ispos(a) || ispos(r))
 
 function ispossemidef(
     A :: Union{Symmetric{<: Real}, Hermitian{<: Number}};
     atol :: Real = default_atol(A),
-    rtol :: Real = default_rtol(A, atol)
+    rtol :: Real = default_rtol(atol, A)
 )
     @argcheck tol_check(atol, rtol)
     λ = eigvals(A)
@@ -30,43 +33,72 @@ end
 isalmosthermitian(
     A;
     atol :: Real = default_atol(A),
-    rtol :: Real = default_rtol(A, atol),
+    rtol :: Real = default_rtol(atol, A),
     norm :: Function = norm
 ) = isapprox(A, A'; atol, rtol, norm)
     
 isalmostsymmetric(
     A;
     atol :: Real = default_atol(A),
-    rtol :: Real = default_rtol(A, atol),
+    rtol :: Real = default_rtol(atol, A),
     norm :: Function = norm
 ) = isapprox(A, transpose(A); atol, rtol, norm)
 
 ispossemidef(
     A :: AbstractMatrix,
     atol :: Real = default_atol(A),
-    rtol :: Real = default_rtol(A, atol)
+    rtol :: Real = default_rtol(atol, A)
 ) = isalmosthermitian(A; atol, rtol) && ispossemidef(Hermitian(A + A'); atol, rtol)
 
 isalmostreal(
     A;
     norm = norm,
     atol :: Real = default_atol(A),
-    rtol :: Real = default_rtol(A, atol)
+    rtol :: Real = default_rtol(atol, A)
 ) = deep_eltype(A) <: Real ? true : isapprox(A, conj(A); atol, rtol, norm)
 
 ispossemidef(A :: Real; atol :: Real = default_atol(A), kwargs...) = (A >= -atol)
 ispossemidef(
     A :: Complex;
     atol :: Real = default_atol(A),
-    rtol :: Real = default_rtol(A, atol)
+    rtol :: Real = default_rtol(atol, A)
 ) = (isalmostreal(A; atol, rtol) && ispossemidef(real(A); atol))
 
 isalmostunitary(
     A :: AbstractMatrix;
     atol :: Real = default_atol(A),
-    rtol :: Real = default_rtol(A, atol)
+    rtol :: Real = default_rtol(atol, A)
 ) = isapprox(A * A', I; atol, rtol)
 
+function nullify!(
+    A :: AbstractArray{T};
+    atol = default_atol(A),
+    rtol = default_rtol(atol, A),
+    norm = norm
+) where {T <: Real}
+    ε = max(norm(A) * rtol, atol) / length(A)
+    @inbounds for i in eachindex(A)
+        A[i] = abs(A[i]) < ε ? zero(A[i]) : A[i]
+    end
+    A
+end
+
+function nullify!(
+    A :: AbstractArray{T};
+    atol = default_atol(A),
+    rtol = default_rtol(atol, A),
+    norm = norm
+) where {T <: Complex}
+    ε = max(norm(A) * rtol, atol) / length(A)
+    @inbounds for i in eachindex(A)
+        p, q = real(A[i]), imag(A[i])
+        A[i] = Complex(
+            abs(p) < ε ? zero(p) : p,
+            abs(q) < ε ? zero(q) : q
+        )
+    end
+    A
+end
 # function which always returns a constant
 struct ConstFun{T} <: Function
     val :: T

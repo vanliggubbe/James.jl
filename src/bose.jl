@@ -1,13 +1,9 @@
 function aaa_bose(
         T,
         Ω = T,
-        δ = default_atol(promote_type(typeof(T), typeof(Ω))),
-        atol = default_atol(promote_type(typeof(T), typeof(Ω))),
-        rtol = (
-            iszero(atol) ?
-            default_atol(promote_type(typeof(T), typeof(Ω))) :
-            default_rtol(promote_type(typeof(T), typeof(Ω)))
-        );
+        δ = default_atol(T, Ω),
+        atol = default_atol(T, Ω, δ),
+        rtol = default_rtol(atol, T, Ω, δ);
         aaa_kwargs...
 )
     bose(x) = (coth(x / (2 * T)) - 2 * T / x) / x + δ

@@ -121,7 +121,7 @@ function aaa_symm(
     Λ :: Real;
     finite :: Bool = false,
     atol :: Real = default_atol(Λ),
-    rtol :: Real = iszero(atol) ? default_atol(Λ) : default_rtol(Λ),
+    rtol :: Real = default_rtol(atol, Λ),
     n_iter :: Int = 40,
     n_split :: Function = ConstFun(10),
     f_symm :: Function = conj,
