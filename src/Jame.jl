@@ -1,4 +1,4 @@
-module James
+module Jame
 
 using LinearAlgebra
 using BlockArrays
