@@ -21,7 +21,7 @@ struct FactorizedBSD{
     end
 end
 
-Base.eltype(:: Type{FactorizedBSD{T}}) where {T} = T
+Base.eltype(:: Type{FactorizedBSD{T, ML, MM, MR}}) where {T, ML, MM, MR} = T
 Base.eltype(:: FactorizedBSD{T}) where {T} = T
 
 struct CausalBSD{
