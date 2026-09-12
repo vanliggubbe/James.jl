@@ -16,6 +16,7 @@ export bose_factor
 export bcf_factor
 export CausalBSD, FactorizedBSD
 export MarkovianEmbedding
+export diffusion, hamiltonian, drift, symplform, ndof
 
 
 end

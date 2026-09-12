@@ -1,18 +1,51 @@
 struct MarkovianEmbedding{
     RTYPE <: Real,
+    ITYPE,
     MD <: Hermitian{<: Union{RTYPE, Complex{RTYPE}}},
     MH <: Symmetric{RTYPE},
     MM <: AbstractMatrix{RTYPE}
 }
 
-    index_s :: UnitRange{Int}
-    index_q :: UnitRange{Int}
-    index_c :: UnitRange{Int}
+    index_s :: ITYPE
+    index_q :: ITYPE
+    index_c :: ITYPE
 
     diff :: MD
     hmlt :: MH 
     drft :: MM
 end
+
+_index(me :: MarkovianEmbedding, i :: String) = (
+    i in ("s", "sys", "system") ? me.index_s : (
+        i in ("q", "quant", "quantum") ? me.index_q : (
+            i in ("c", "cl", "class", "classical") ? me.index_c :
+            throw(ArgumentError("Unknown block index: $i"))
+        )
+    )
+)
+
+_index(me :: MarkovianEmbedding, i :: Symbol) = (
+    i in (:s, :sys, :system) ? me.index_s : (
+        i in (:q, :quant, :quantum) ? me.index_q : (
+            i in (:c, :cl, :class, :classical) ? me.index_c :
+            throw(ArgumentError("Unknown block index: $i"))
+        )
+    )
+)
+
+diffusion(me :: MarkovianEmbedding) = me.diff
+diffusion(me :: MarkovianEmbedding, i, j) = me.diff[_index(me, i), _index(me, j)]
+hamiltonian(me :: MarkovianEmbedding) = me.hmlt
+hamiltonian(me :: MarkovianEmbedding, i, j) = me.hmlt[_index(me, i), _index(me, j)]
+drift(me :: MarkovianEmbedding) = me.drft
+
+ndof(me :: MarkovianEmbedding) = length(me.index_s) + length(me.index_q) + length(me.index_c)
+ndof(me :: MarkovianEmbedding, i) = length(_index(me, i))
+
+symplform(me :: MarkovianEmbedding{T}) where T = kron(
+    I(length(me.index_q) ÷ 2), 
+    [zero(T) one(T); -one(T) zero(T)]
+)
 
 function bcf_factor(J :: FactorizedBSD, T :: Real, Ω :: Real = T; kwargs...)
     # factorize bose approximation
@@ -42,7 +75,7 @@ function bcf_factor(J :: FactorizedBSD, T :: Real, Ω :: Real = T; kwargs...)
 end
 
 
-function HME_matrices(
+function MarkovianEmbedding(
         J :: FactorizedBSD{S},
         T :: Real,
         Ω :: Real = T;
@@ -82,8 +115,6 @@ function HME_matrices(
 
     # diffusion matrix
     D = let T = [(-im * inv(Ω)) zeros(rk, ker); zeros(ker, rk) I(ker)], W = W, R = R
-        display(W)
-        display(T * R)
         X = [sqrt(2) * W; T * R];
         Hermitian(X * X')
     end
@@ -99,11 +130,19 @@ function HME_matrices(
         K                       -symm(Ω \ M[i_q, i_q])  (-Ω \ M[i_q, i_c]);
         (sqrt(2) * L[i_c, :])   (-Ω \ M[i_q, i_c])'     zeros(ker, ker)
     ])
+    return MarkovianEmbedding(
+        1 : size(W, 1),
+        size(W, 1) .+ (1 : rk),
+        (size(W, 1) + rk) .+ (1 : ker),
+        D, H, M[rk + 1 : end, rk + 1 : end]
+    )
+    #=
     return (
         Matrix(Ω), 
         BlockedArray(D, [size(L, 2), rk, ker], [size(L, 2), rk, ker]),
         BlockedArray(H, [size(L, 2), rk, ker], [size(L, 2), rk, ker]),
         M[rk + 1 : end, rk + 1 : end]
     )
+    =#
 end
 

@@ -65,3 +65,62 @@ end
         end
     end
 end
+
+@testset "MarkovianEmbedding" begin
+    M = randn(rng, 10, 10)
+    M -= I * (real(first(eigvals(M))) * 1.1)
+    J = FactorizedBSD(randn(rng, 10, 2), M, randn(rng, 10, 2))
+
+    T = 1.0
+    me = MarkovianEmbedding(J, T, 100.0; aaa_kwargs = (finite = true,))
+
+    Ω = symplform(me)
+    D_qq = diffusion(me, :q, :q)
+    D_cq = diffusion(me, :c, :q)
+    D_qc = diffusion(me, :q, :c)
+    D_qs = diffusion(me, :q, :s)
+    D_cc = diffusion(me, :c, :c)
+    D_cs = diffusion(me, :c, :s)
+    D_ss = diffusion(me, :s, :s)
+    
+    H_qq = hamiltonian(me, :q, :q)
+    H_qc = hamiltonian(me, :q, :c)
+    H_qs = hamiltonian(me, :q, :s)
+    H_cs = hamiltonian(me, :c, :s)
+    H_ss = hamiltonian(me, :s, :s)
+
+    M = [
+        (-Ω * (H_qq + imag(D_qq)))  (-Ω * H_qc);
+        (2 * real(D_cq))            drift(me)
+    ]
+    D = [
+        (-Ω * real(D_qq) * Ω)   (-Ω * imag(D_qc));
+        (-imag(D_cq) * Ω)       (D_cc)
+    ]
+    X = [
+        (H_qs - imag(D_qs));
+        H_cs
+    ]
+    P = [
+        (-Ω * (H_qs + imag(D_qs)));
+        2 * real(D_cs)
+    ]
+    Q = [
+        (-Ω * real(D_qs));
+        (-imag(D_cs))
+    ]
+
+    for ω in LinRange(-50, 50, 30)
+        Σ_R = -im * X' * ((ω * I + im * M) \ P) + H_ss + imag(D_ss)
+        Σ_K = (
+            -im * X' * ((ω * I + im * M) \ (D * ((ω * I - im * M') \ X)))
+            - X' * ((ω * I + im * M) \ Q)
+            + Q' * ((ω * I - im * M') \ X)
+            -im * real(D_ss)
+        )
+
+        @test isapprox((Σ_R - Σ_R') * 0.5im, J(ω); atol = 1e-6, rtol = 1e-6) 
+        @test isapprox(Σ_K, -Σ_K')
+        @test isapprox(im * Σ_K, J(ω) * coth(ω / (2 * T)); atol = 1e-6, rtol = 1e-6)
+    end
+end
