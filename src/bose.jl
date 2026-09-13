@@ -17,7 +17,7 @@ function bose_factor(
         δ :: Real = (ε / 2),
         aaa_kwargs = (
             n_iter = 50,
-            norm_weight = ConstFun(1),
+            norm_weight = Returns(1),
         )
 )
     @argcheck ispos(temperature)
@@ -80,7 +80,7 @@ function bose_factor(
     end
 
     @check length(poles) + 1 == length(roots)
-    @check isalmostreal(im * poles)
+    @check isreal(im * poles, Approx(poles))
 
     regular = sqrt(constant / 2) * [sum_kbn(poles) - sum_kbn(roots), one(eltype(roots))]
     residues = [

@@ -123,11 +123,11 @@ function aaa_symm(
     atol :: Real = default_atol(Λ),
     rtol :: Real = default_rtol(atol, Λ),
     n_iter :: Int = 40,
-    n_split :: Function = ConstFun(10),
+    n_split :: Function = Returns(10),
     f_symm :: Function = conj,
     w_symm = 1,
-    point_norm :: Function = norm,
-    norm_weight :: Function = ConstFun(1),
+    point_norm :: Function = frnorm,
+    norm_weight :: Function = Returns(1),
 )
     @argcheck ispos(Λ)
     @argcheck isnneg(atol)

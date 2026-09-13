@@ -1,17 +1,3 @@
-@inline ispos(x :: Real) = (x > zero(x))
-@inline isneg(x :: Real) = (x < zero(x))
-@inline isnpos(x :: Real) = !ispos(x)
-@inline isnneg(x :: Real) = !isneg(x)
-
-default_atol(x...) = zero(float(real(promote_type(deep_eltype.(x)...))))
-default_rtol(atol, x...) = (
-    iszero(atol) ? 
-    sqrt(eps(float(real(promote_type(deep_eltype.(x)...))))) :
-    default_atol(x...)
-)
-@inline tol_check(a :: Real, r :: Real) = isnneg(a) && isnneg(r) && (ispos(a) || ispos(r))
-@inline norm_check(A, n) = (iszero(A) == iszero(n)) && isnneg(n)
-
 function _ispossemidef(A, atol, rtol, norm)
     # find projector on negative part
     λ, X = eigen(A)

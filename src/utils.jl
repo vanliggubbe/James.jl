@@ -1,6 +1,9 @@
 # Auxiliary functions
 
-symm(a) = (a + transpose(a)) / 2
+const RealOrComplex{T} = Union{T, Complex{T}} where {T}
+const AbstractScalarOrMatrix{T} = Union{T, AbstractMatrix{T}} where {T}
+
+symm(a) = (a + transpose(a)) / 2 
 skew(a) = (a - transpose(a)) / 2
 
 deep_eltype(:: Type{T}) where {T} = let ET = eltype(T);
@@ -18,17 +21,66 @@ function ensure(x, f, msg)
     x
 end
 
+#=
+# checks
+=#
+@inline ispos(x :: Real) = (x > zero(x))
+@inline isneg(x :: Real) = (x < zero(x))
+@inline isnpos(x :: Real) = !ispos(x)
+@inline isnneg(x :: Real) = !isneg(x)
 
-include("checks.jl")
+default_atol(x...) = zero(float(real(promote_type(deep_eltype.(x)...))))
+default_rtol(atol, x...) = (
+    iszero(atol) ? 
+    sqrt(eps(float(real(promote_type(deep_eltype.(x)...))))) :
+    default_atol(x...)
+)
 
-#@inline concat(iterators...) = Iterators.flatten(iterators)
+@inline tol_check(a :: Real, r :: Real) = isnneg(a) && isnneg(r) && (ispos(a) || ispos(r))
+@inline norm_check(A, n) = (iszero(A) == iszero(n)) && isnneg(n)
+
+# interface to IsApprox.jl
+function Approx(
+    x, y...;
+    atol :: Real = default_atol(x, y...),
+    rtol :: Real = default_rtol(atol, x, y...),
+    norm :: Function = frnorm
+) 
+    @argcheck tol_check(atol, rtol)
+    return Approx(; atol, rtol, norm)
+end
+
+function EachApprox(
+    x, y...;
+    atol :: Real = default_atol(x, y...),
+    rtol :: Real = default_rtol(atol, x, y...)
+)
+    @argcheck tol_check(atol, rtol)
+    return EachApprox(; atol, rtol)
+end
+
+function ispossemidef(A :: Hermitian, approx :: AbstractApprox = Approx(A))
+    Λ, X = eigen(A)
+    idx = findfirst(isnneg, Λ)
+    isnothing(idx) && return false
+
+    Λ₊ = (@view Λ[idx : end])
+    X₊ = (@view X[:, idx : end])
+    A₊ = X₊ * Diagonal(Λ₊) * X₊'
+    isapprox(A, A₊, approx)
+end
+
+ispossemidef(
+    A :: AbstractMatrix,
+    approx :: AbstractApprox = Approx(A)
+) = ishermitian(A, approx) && ispossemidef(Hermitian(A), approx)
 
 function nullify!(
-    A :: AbstractArray{T};
+    A :: AbstractArray{<: Real};
     atol = default_atol(A),
     rtol = default_rtol(atol, A),
-    norm = norm
-) where {T <: Real}
+    norm = frnorm
+)
     ε = max(norm(A) * rtol, atol) / length(A)
     @inbounds for i in eachindex(A)
         A[i] = abs(A[i]) < ε ? zero(A[i]) : A[i]
@@ -37,11 +89,11 @@ function nullify!(
 end
 
 function nullify!(
-    A :: AbstractArray{T};
+    A :: AbstractArray{<: Complex};
     atol = default_atol(A),
     rtol = default_rtol(atol, A),
-    norm = norm
-) where {T <: Complex}
+    norm = frnorm
+)
     ε = max(norm(A) * rtol, atol) / length(A)
     @inbounds for i in eachindex(A)
         p, q = real(A[i]), imag(A[i])
@@ -52,12 +104,6 @@ function nullify!(
     end
     A
 end
-# function which always returns a constant
-struct ConstFun{T} <: Function
-    val :: T
-end
-
-(f :: ConstFun)(:: Any...) = f.val
 
 isinside(x, seg) = let (l, r) = seg; l < x < r; end
 
@@ -89,11 +135,11 @@ ishurwitz(A :: AbstractMatrix, :: Val{true}) = ishurwitz(A)
 # needed for evaluation of a rational function of a matrix
 Base.isnan(a :: AbstractArray) = any(isnan, a)
 
-phase_factor(x) = iszero(x) ? one(x) : (x / abs(x))
-unsafe_phase_factor(x) = (x / abs(x))
+@inline unsafe_phase_factor(x) = (x / abs(x))
+@inline phase_factor(x) = (iszero(x) ? one(x) : unsafe_phase_factor(x))
 
 # takagi factorization
-function takagi(A :: Symmetric)
+function takagi(A :: Symmetric, approx = Approx(A))
     _, _, V = svd(Matrix(A))
     C = transpose(V) * A * V
 
@@ -106,8 +152,8 @@ function takagi(A :: Symmetric)
             _, j = findmax(abs, col)
             col .*= unsafe_phase_factor(conj(col[j]))
         end
-        @assert norm(imag(Z)) < norm(real(Z)) * sqrt(eps(real(eltype(Z))))
-        @assert norm(Z * Z' - I) < norm(Z * Z') * sqrt(eps(real(eltype(Z))))
+        @check isreal(Z, approx)
+        @check isunitary(Z, approx)
         real(Z)'
     end
 

@@ -35,10 +35,10 @@ struct CausalBSD{
     M :: MM
     R :: MR
 
-    function CausalBSD(L, M, R)
+    function CausalBSD(L, M, R, approx :: AbstractApprox = Approx(L, M, R))
         @argcheck ishurwitz(M, Val(false))
-        @argcheck isalmosthermitian(L' * (M \ R))
-        @argcheck ispossemidef(L' * R + R' * L)
+        @argcheck ishermitian(L' * (M \ R), approx)
+        @argcheck ispossemidef(L' * R + R' * L, approx)
 
         T = promote_type(eltype(L), eltype(M), real(eltype(R)))
         S = promote_type(T, eltype(R))
@@ -61,16 +61,17 @@ _J_call(J :: FactorizedBSD, ω) = ω * spectral_factor(J, ω) * (spectral_factor
 (J :: CausalBSD)(ω :: Real) = let X = J.L' * ((ω * I + im * J.M) \ J.R); Hermitian(X + X') end
 
 function FactorizedBSD(
-        J :: CausalBSD{T};
-        atol :: Real = default_atol(T),
-        rtol :: Real = default_rtol(atol, T)
+        J :: CausalBSD{T}, approx :: AbstractApprox = Approx(T)
 ) where {T}
-    Σ = _bsd_riccati_solution(J.L, J.M, J.M \ J.R; atol, rtol)
-    @check isapprox(J.M \ J.R, Σ * J.L; atol, rtol)
+    Σ = _bsd_riccati_solution(J.L, J.M, J.M \ J.R, approx)
+    @check isapprox(J.M \ J.R, Σ * J.L, approx)
 
     # check positive semidefiniteness of (M Σ + Σ M⁺)
     # and get it's square root
     R = let (Λ, U) = eigen(Hermitian(J.M * Σ + Σ * J.M'); sortby = (-))
+        atol = get(approx.kw, :atol, default_atol(Λ))
+        rtol = get(approx.kw, :rtol, default_rtol(atol, Λ))
+
         @check Λ[end] > -max(atol, rtol * Λ[begin])
         rk = findlast(>(max(atol, rtol * Λ[begin])), Λ)
         R = U[:, 1 : rk] * Diagonal(sqrt.(Λ[1 : rk]))
@@ -82,13 +83,13 @@ function FactorizedBSD(
 
         Q = transpose(R) * U * Diagonal(map(inv, S)) * V'
         # matrix Q should be symmetric and unitary at the same time
-        @check isalmostsymmetric(Q; atol, rtol)
-        @check isalmostunitary(Q; atol, rtol)
+        @check issymmetric(Q, approx)
+        @check isunitary(Q, approx)
 
         S, = takagi(Symmetric(Q))
         R = R * S
         # product R * S should be real
-        @check isalmostreal(R; atol, rtol)
+        @check isreal(R, approx)
         real(R)
     end
 
@@ -249,12 +250,12 @@ end
 # construct a complex realization of a retarded part of bath spectral density
 function _bsd_realization(
         poles,
-        residues;
-        atol :: Real = default_atol(poles, residues),
-        rtol :: Real = default_rtol(
-            atol, poles, residues
-        )
+        residues,
+        approx :: AbstractApprox = Approx(poles, residues)
 )
+    atol = get(approx.kw, :atol, default_atol(poles, residues))
+    rtol = get(approx.kw, :rtol, default_rtol(atol, poles, residues))
+
     PTYPE = real(deep_eltype(poles))
     P = Matrix{deep_eltype(residues)}(undef, size(first(residues), 1), 0)
     Q = Matrix{deep_eltype(residues)}(undef, size(first(residues), 1), 0)
@@ -271,7 +272,7 @@ function _bsd_realization(
         )
 
         if !(rk isa Nothing)
-            if isalmostreal(p; atol, rtol)
+            if isreal(p, approx)
                 sqrt_S = Diagonal(map(sqrt, @view S[1 : rk]))
                 U = U[:, 1 : rk] * sqrt_S
                 V = V[:, 1 : rk] * sqrt_S
@@ -286,7 +287,7 @@ function _bsd_realization(
                 P = hcat(P, U)
                 Q = hcat(Q, V)
             elseif !mask[i]
-                j = let fun(x) = isapprox(x, p'; atol, rtol)
+                j = let fun(x) = isapprox(x, p', approx)
                     findfirst(fun, poles)
                 end
                 mask[i] = true
@@ -325,22 +326,21 @@ end
 # A Σ + Σ A⁺ is positive semidefinite
 # reduced to riccati solver
 function _bsd_riccati_solution(
-        P, A, Q; 
-        atol :: Real = default_atol(promote_type(deep_eltype.((P, A, Q))...)),
-        rtol :: Real = default_rtol(
-            atol, promote_type(P, A, Q)
-        )
+        P, A, Q,
+        approx :: AbstractApprox = Approx(P, A, Q) 
 )
     if isempty(A)
         return Hermitian(copy(A))
     end
     # solve Q = Σ P for Σ
     H = let H = P' * Q
-        @check isalmosthermitian(H; atol, rtol)
+        @check ishermitian(H, approx)
         Hermitian((H + H') / 2)
     end
 
     # check if H is positive semidefinite
+    atol = get(approx.kw, :atol, default_atol(P, A, Q))
+    rtol = get(approx.kw, :rtol, default_rtol(atol, P, A, Q))
     Λ, U = eigen(H; sortby = (-))
     @check Λ[end] > -max(atol, Λ[begin] * rtol)
 
@@ -410,7 +410,7 @@ function _bsd_riccati_solution(
         end
         return Hermitian(W * W' + N * Y * N')
     else
-        Y = _bsd_riccati_solution(R_A_N', N_A_N, -N_F_R; atol, rtol)
+        Y = _bsd_riccati_solution(R_A_N', N_A_N, -N_F_R, approx)
         return Hermitian(W * W' + N * Y * N')
     end
 end

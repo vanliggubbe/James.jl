@@ -42,7 +42,7 @@ drift(me :: MarkovianEmbedding) = me.drft
 ndof(me :: MarkovianEmbedding) = length(me.index_s) + length(me.index_q) + length(me.index_c)
 ndof(me :: MarkovianEmbedding, i) = length(_index(me, i))
 
-symplform(me :: MarkovianEmbedding{T}) where T = kron(
+symplform(me :: MarkovianEmbedding{T}) where {T} = kron(
     I(length(me.index_q) ÷ 2), 
     [zero(T) one(T); -one(T) zero(T)]
 )
@@ -53,7 +53,7 @@ function bcf_factor(J :: FactorizedBSD, T :: Real, Ω :: Real = T; kwargs...)
         kron(L, I(d)), kron(M, I(d)), kron(R, I(d)), reg
     end
     # in principle should always be valid, but who knows
-    @check isalmostreal(reg[2])
+    @check isreal(reg[2], Approx(reg[2]))
 
     LTYPE = eltype(J.L)
     MTYPE = promote_type(eltype(J.M), eltype(M), eltype(J.R), eltype(L))
@@ -78,12 +78,14 @@ end
 function MarkovianEmbedding(
         J :: FactorizedBSD{S},
         T :: Real,
-        Ω :: Real = T;
-        norm :: Function = norm,
-        atol :: Real = default_atol(J, T, Ω),
-        rtol :: Real = default_rtol(atol, J, T, Ω),
+        Ω :: Real = T,
+        approx :: AbstractApprox = Approx(J, T, Ω);
         kwargs...
 ) where {S}
+    atol = get(approx.kw, :atol, default_atol(J, T, Ω))
+    rtol = get(approx.kw, :rtol, default_rtol(atol, J, T, Ω))
+    norm = get(approx.kw, :norm, frnorm)
+
     W, L, M, R = bcf_factor(J, T, Ω; kwargs...)
 
     # solve Lyapunov equation for the presymplectic form
