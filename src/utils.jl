@@ -7,8 +7,9 @@ symm(a) = (a + transpose(a)) / 2
 skew(a) = (a - transpose(a)) / 2
 
 deep_eltype(:: Type{T}) where {T} = let ET = eltype(T);
-    T == ET ? T : deep_eltype(ET)
+    (T == ET) ? T : deep_eltype(ET)
 end
+
 deep_eltype(:: T) where {T} = deep_eltype(T)
 
 function ensure(x, f)

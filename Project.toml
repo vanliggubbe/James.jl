@@ -7,9 +7,9 @@ version = "0.0.0"
 ArgCheck = "dce04be8-c92d-5529-be00-80e4d2c0e197"
 BlockArrays = "8e7c35d0-a365-5155-bbbb-fb81a777f24e"
 IsApprox = "28f27b66-4bd8-47e7-9110-e2746eb8bed7"
-KahanSummation = "8e2b3108-d4c1-50be-a7a2-16352aec75c3"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MatrixEquations = "99c1a7ee-ab34-5fd5-8076-27c950a045f4"
+Xsum = "1fd64df0-a4d2-11e9-360d-2f03868f4cf5"
 
 [compat]
 julia = "1.10"

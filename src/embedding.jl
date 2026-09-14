@@ -1,7 +1,7 @@
 struct MarkovianEmbedding{
     RTYPE <: Real,
     ITYPE,
-    MD <: Hermitian{<: Union{RTYPE, Complex{RTYPE}}},
+    MK <: Hermitian{<: Union{RTYPE, Complex{RTYPE}}},
     MH <: Symmetric{RTYPE},
     MM <: AbstractMatrix{RTYPE}
 }
@@ -10,12 +10,12 @@ struct MarkovianEmbedding{
     index_q :: ITYPE
     index_c :: ITYPE
 
-    diff :: MD
+    koss :: MK
     hmlt :: MH 
     drft :: MM
 end
 
-_index(me :: MarkovianEmbedding, i :: String) = (
+_index(me :: MarkovianEmbedding, i :: AbstractString) = (
     i in ("s", "sys", "system") ? me.index_s : (
         i in ("q", "quant", "quantum") ? me.index_q : (
             i in ("c", "cl", "class", "classical") ? me.index_c :
@@ -32,33 +32,76 @@ _index(me :: MarkovianEmbedding, i :: Symbol) = (
         )
     )
 )
+"""
+    kossakovski(me :: MarkovianEmbedding[, i, j])
 
-diffusion(me :: MarkovianEmbedding) = me.diff
-diffusion(me :: MarkovianEmbedding, i, j) = me.diff[_index(me, i), _index(me, j)]
+Returns Kossakovski matrix of Markovian embedding `me`. If indices `i` and `j` are specified, returns corresponding block of the matrix. Possible values of `i` and `j` are:
+- `"s"`, `"sys"`, `"system"`, `:s`, `:sys`, `:system` for the coupling operator block
+- `"q"`, `"quant"`, `"quantum"`, `:q`, `:quant`, `:quantum` for quantum degrees of freedom of the embedding
+- `"c"`, `"cl"`, `"class"`, `"classical"`, `:c`, `:cl`, `:class`, `:classical` for classical degrees of freedom of the embedding
+"""
+kossakovski(me :: MarkovianEmbedding) = me.koss
+kossakovski(me :: MarkovianEmbedding, i, j) = me.koss[_index(me, i), _index(me, j)]
+
+"""
+    hamiltonian(me :: MarkovianEmbedding[, i, j])
+
+Returns Hamiltonian matrix of Markovian embedding `me`. If indices `i` and `j` are specified, returns corresponding block of the matrix. Possible values of `i` and `j` are:
+- `"s"`, `"sys"`, `"system"`, `:s`, `:sys`, `:system` for the coupling operator block
+- `"q"`, `"quant"`, `"quantum"`, `:q`, `:quant`, `:quantum` for quantum degrees of freedom of the embedding
+- `"c"`, `"cl"`, `"class"`, `"classical"`, `:c`, `:cl`, `:class`, `:classical` for classical degrees of freedom of the embedding
+"""
 hamiltonian(me :: MarkovianEmbedding) = me.hmlt
 hamiltonian(me :: MarkovianEmbedding, i, j) = me.hmlt[_index(me, i), _index(me, j)]
+
+"""
+    drift(me :: MarkovianEmbedding)
+
+Returns drift matrix of classical degrees of freedom of Markovian embedding `me`.
+"""
 drift(me :: MarkovianEmbedding) = me.drft
 
+"""
+    ndof(me :: MarkovianEmbedding[, i])
+
+Returns size of Hamiltonian and Kossakovski matrices of Markovian embedding `me`. If index `i` is specified, returns size of the respective block. Possible values of `i` are
+- `"s"`, `"sys"`, `"system"`, `:s`, `:sys`, `:system` for the coupling operator block
+- `"q"`, `"quant"`, `"quantum"`, `:q`, `:quant`, `:quantum` for quantum degrees of freedom of the embedding
+- `"c"`, `"cl"`, `"class"`, `"classical"`, `:c`, `:cl`, `:class`, `:classical` for classical degrees of freedom of the embedding
+"""
 ndof(me :: MarkovianEmbedding) = length(me.index_s) + length(me.index_q) + length(me.index_c)
 ndof(me :: MarkovianEmbedding, i) = length(_index(me, i))
 
+"""
+    symplform(me :: MarkovianEmbedding)
+
+Returns symplectic `Ω` form which specifies commutator matrix of the quantum degrees of freedom of Markovian embedding `me`:
+    [x̂ⱼ, x̂ₖ] = i Ωⱼₖ
+"""
 symplform(me :: MarkovianEmbedding{T}) where {T} = kron(
     I(length(me.index_q) ÷ 2), 
     [zero(T) one(T); -one(T) zero(T)]
 )
 
-function bcf_factor(J :: FactorizedBSD, T :: Real, Ω :: Real = T; kwargs...)
+function bcf_factor(J :: FactorizedBSD, f_bose :: RationalPencil)
     # factorize bose approximation
-    L, M, R, reg = let (L, M, R, reg) = bose_factor(T, Ω; kwargs...), d = size(J.R, 2)
-        kron(L, I(d)), kron(M, I(d)), kron(R, I(d)), reg
-    end
+    @argcheck isone(f_bose.c * im)
+    @argcheck eltype(f_bose.L) <: Real
+    @argcheck eltype(f_bose.M) <: Real
+
+    d = size(J.R, 2)
+    L = kron(f_bose.L, I(d))
+    M = kron(f_bose.M, I(d))
+    R = kron(f_bose.R, I(d))
+    reg = f_bose.poly
+
     # in principle should always be valid, but who knows
-    @check isreal(reg[2], Approx(reg[2]))
+    @argcheck isreal(reg[2], Approx(reg[2]))
 
     LTYPE = eltype(J.L)
     MTYPE = promote_type(eltype(J.M), eltype(M), eltype(J.R), eltype(L))
-    return (
-        J.L' * J.R * real(reg[2]),
+    return RationalPencil(
+        [J.L' * J.R * real(reg[2]), ], -im,
         [
             J.L;
             zeros(LTYPE, size(L, 1), size(J.L, 2))
@@ -74,19 +117,30 @@ function bcf_factor(J :: FactorizedBSD, T :: Real, Ω :: Real = T; kwargs...)
     )
 end
 
+bcf_factor(J :: FactorizedBSD, T :: Real, args...; kwargs...) = bcf_factor(J, bose_factor(T, args...; kwargs...))
+
+
+MarkovianEmbedding(J :: FactorizedBSD, T :: Real, args...; kwargs...) = MarkovianEmbedding(
+    bcf_factor(J, T, args...; kwargs...)
+)
 
 function MarkovianEmbedding(
-        J :: FactorizedBSD{S},
-        T :: Real,
-        Ω :: Real = T,
-        approx :: AbstractApprox = Approx(J, T, Ω);
-        kwargs...
-) where {S}
-    atol = get(approx.kw, :atol, default_atol(J, T, Ω))
-    rtol = get(approx.kw, :rtol, default_rtol(atol, J, T, Ω))
+    S_factor :: RationalPencil,
+    approx :: AbstractApprox = Approx(S_factor)
+)
+    @argcheck deep_eltype(first(S_factor.poly)) <: Real
+    @argcheck deep_eltype(S_factor.L) <: Real
+    @argcheck deep_eltype(S_factor.M) <: Real
+    @argcheck isone(S_factor.c * im) 
+
+    atol = get(approx.kw, :atol, default_atol(S_factor))
+    rtol = get(approx.kw, :rtol, default_rtol(atol, S_factor))
     norm = get(approx.kw, :norm, frnorm)
 
-    W, L, M, R = bcf_factor(J, T, Ω; kwargs...)
+    W = first(S_factor.poly)
+    L = S_factor.L
+    M = S_factor.M
+    R = S_factor.R
 
     # solve Lyapunov equation for the presymplectic form
     # and reduce it to the Darboux form
@@ -115,7 +169,7 @@ function MarkovianEmbedding(
     Ω = (@view Θ[1 : rk, 1 : rk])
     ker = size(Θ, 1) - rk 
 
-    # diffusion matrix
+    # kossakovski matrix
     D = let T = [(-im * inv(Ω)) zeros(rk, ker); zeros(ker, rk) I(ker)], W = W, R = R
         X = [sqrt(2) * W; T * R];
         Hermitian(X * X')

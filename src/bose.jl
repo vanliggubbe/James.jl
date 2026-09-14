@@ -7,95 +7,103 @@ function aaa_bose(
         aaa_kwargs...
 )
     bose(x) = (coth(x / (2 * T)) - 2 * T / x) / x + δ
-    return aaa_symm(bose, Ω; atol, rtol, f_symm = identity, w_symm = -1, aaa_kwargs...)
+    return aaa_symm(bose, Ω; atol = δ, f_symm = identity, w_symm = -1, aaa_kwargs...)
 end
+
+# 1 / a - 1 / b = (a - b) / (a * b)
+# cosh(x) / sinh(x) - 1 / x = [cosh(x) * x  - sinh(x)] / (x * sinh(x))
+# = [x * (1 + x ^ 2 / 2! + x ^ 4 / 4!) - x - x ^ 3 / 3! - x ^ 5 / 5!]
+# / [x ^ 2 + x ^ 4 / 3! + x ^ 6 / 5!] 
+# = [x / 2 - x / 6 + x ^ 4 / 
+#
+_bose(x) = (
+    abs(x) < eps(eltype(x)) ^ 0.25 ?
+    (one(x) + x ^ 2 / 10) / (one(x) + x ^ 2 / 6) / 3 :
+    (coth(x) - inv(x)) / x
+)
+
+_inversion(x) = (one(x) - x) / x
+
+function _coth_approx(δ :: Real, Λ :: Real = one(δ); aaa_kwargs...)
+    end
 
 function bose_factor(
         temperature :: Real,
-        Ω :: Real = temperature;
-        ε :: Real = sqrt(eps(Float64)),
-        δ :: Real = (ε / 2),
-        aaa_kwargs = (
-            n_iter = 50,
-            norm_weight = Returns(1),
-        )
+        δ :: Real = sqrt(eps(float(typeof(temperature)))),
+        Ω :: Real = temperature * 4;
+        tol = δ / 64,
+        aaa_kwargs...
 )
     @argcheck ispos(temperature)
     @argcheck ispos(δ)
     # get AAA approximation for coth(x / 2T)
-    xs, ws, fs = aaa_bose(temperature, Ω, δ, ε / 2; aaa_kwargs...)
-    #fs .+= δ
-
-    TYPE = promote_type(eltype(xs), eltype(ws), eltype(fs))
-    n = length(xs)
-    poles, constant = let 
-        # find poles
-        A = zeros(TYPE, n + 1, n + 1)
-        B = zeros(real(TYPE), n + 1, n + 1)
-        for (i, (x, w)) in enumerate(zip(xs, ws))
-            A[i + 1, i + 1] = x ^ 2
-            tmp = sqrt(abs(w) * abs(x))
-            A[1, i + 1] = sign(w) * tmp
-            A[i + 1, 1] = tmp
-            B[i + 1, i + 1] = one(eltype(B))
+    
+    Λ = Ω / (2 * temperature)
+    Λ² = Λ ^ 2
+    xs, ws, fs = scalar_aaa(
+        _bose ∘ sqrt ∘ Base.Fix2(*, Λ²) ∘ _inversion,
+        zero(δ), one(δ), false, false;
+        tol,
+        aaa_kwargs...
+    )
+    
+    poles, constant = let n = length(xs)
+        A = zeros(promote_type(eltype(xs), eltype(ws)), n + 1, n + 1)
+        A[2 : end, 1] .= map(sqrt ∘ abs, ws)
+        A[1, 2 : end] .= A[2 : end, 1] .* sign.(ws)
+        for (i, x) in enumerate(xs)
+            A[i + 1, i + 1] = x
         end
-        fun(x) = flipsign(x, -imag(x))
-        zs = map(fun ∘ sqrt ∘ complex, filter(isfinite, eigvals(A, B)))
 
-        # find residues
-        # rs = [
-        #     sum(w * f * x / (z ^ 2 - x ^ 2) for (x, w, f) in zip(xs, fs, ws)) /
-        #     sum(-2 * w * x * z / (z ^ 2 - x ^ 2) ^ 2 for (x, w) in zip(xs, ws))
-        #     for z in zs
-        # ]
-        zs, sum_kbn([w * f * x for (x, w, f) in zip(xs, fs, ws)]) / sum_kbn([w * x for (x, w) in zip(xs, ws)])
+        B = zeros(eltype(A), n + 1, n + 1)
+        B[2 : end, 2 : end] .= I(n)
+
+        map(
+            (-) ∘ sqrt ∘ complex ∘ Base.Fix2(*, Λ²) ∘ _inversion,
+            filter(isfinite, eigvals(A, B))
+        ), xsum(fs .* ws ./ xs) / xsum(ws ./ xs) + δ
     end
+    fs .+= δ
 
-    # find roots of the numerator
-    roots = let
-        A = zeros(TYPE, 2 * n + 1, 2 * n + 1)
-        B = zeros(TYPE, 2 * n + 1, 2 * n + 1)
-        for (i, (x, w, f)) in enumerate(zip(xs, ws, fs))
-            A[i * 2 + 0, i * 2 + 0] = x
-            A[i * 2 + 1, i * 2 + 1] = -x
-            qwe_p = x + f * x ^ 2 + 2 * temperature
-            qwe_m = x - f * x ^ 2 - 2 * temperature
-            tmp_p = sqrt(abs(w) * abs(qwe_p))
-            tmp_m = sqrt(abs(w) * abs(qwe_m))
-            A[1, i * 2 + 0] = sign(w) * tmp_p
-            A[1, i * 2 + 1] = sign(w) * tmp_m
-            A[i * 2 + 0, 1] = sign(qwe_p) * tmp_p
-            A[i * 2 + 1, 1] = sign(qwe_m) * tmp_m
-            B[i * 2 + 0, i * 2 + 0] = one(eltype(B))
-            B[i * 2 + 1, i * 2 + 1] = one(eltype(B))
-        end
-        A[1, 1] = 2 * sum_kbn([f * w * x for (f, w, x) in zip(fs, ws, xs)])
+    roots = let zs = Λ * sqrt.((1 .- xs) ./ xs)
+        a = -xsum(ws .* fs ./ xs)
 
+        ps = -ws ./ xs
+        qs = -ws ./ xs .* (1 .+ fs .* (zs .^ 2))
+
+        A = [
+            -a kron(ones(length(ps)), [-1, 0])';
+            (kron(ps, [1, 0]) + kron(qs ./ zs, [0, 1])) kron(Diagonal(zs), [0 1; 1 0]);
+        ]
+        B = Matrix(one(eltype(A)) * I, size(A))
+
+        B[1, 1] = 0
         roots = filter(isfinite, eigvals(A, B))
         if any(isreal, roots)
             @error "Roots on the real axis: $(real(filter(isreal, roots)))"
-            error("Rational approximation for n_bose(-ω) * ω is not positive. Try increasing δ.")
+            error("Rational approximation for n_bose(-ω) * ω is not positive. Try increasing `δ` while keeping `tol`.")
         end
-        filter(isneg ∘ imag, filter(isfinite, eigvals(A, B)))
+        filter(isnpos ∘ imag, roots)
     end
-
     @check length(poles) + 1 == length(roots)
     @check isreal(im * poles, Approx(poles))
 
-    regular = sqrt(constant / 2) * [sum_kbn(poles) - sum_kbn(roots), one(eltype(roots))]
+    roots .*= 2 * temperature
+    poles .*= 2 * temperature
+    constant /= 4 * temperature
+
+    regular = sqrt(constant) * [xsum([poles; -roots]), one(eltype(roots))]
     residues = [
         exp(
-            sum_kbn([log(p - r) for r in roots]) -
-            sum_kbn([(j == i ? zero(q) : log(p - q)) for (j, q) in enumerate(poles)])
+            xsum([
+                [log(p - r) for r in roots];
+                [(j == i ? zero(q) : -log(p - q)) for (j, q) in enumerate(poles)]
+            ])
         ) for (i, p) in enumerate(poles)
-    ] * sqrt(constant / 2)
+    ] * sqrt(constant)
     left = map(sqrt ∘ abs, residues)
-    return (
-        left, Diagonal(real(im * poles)), residues ./ left, regular
+    return RationalPencil(
+        regular, -im,
+        left, Diagonal(real(im * poles)), residues ./ left
     )
-    #return (
-    #    sqrt(constant / 2) * 
-    #    FactoredPolynomial(Dict(root => 1 for root in roots)) //
-    #    FactoredPolynomial(Dict(pole => 1 for pole in poles))
-    #)
 end
