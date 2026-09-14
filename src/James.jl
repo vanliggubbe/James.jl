@@ -1,4 +1,4 @@
-module Jame
+module James
 
 import ArgCheck: @argcheck, @check
 import MatrixEquations: arec, lyapc
@@ -17,7 +17,7 @@ include("embedding.jl")
 export bose_factor
 export bcf_factor
 export FactorizedBSD
-export MarkovianEmbedding
+export Jame
 export kossakovski, hamiltonian, drift, symplform, ndof
 export ispossemidef
 

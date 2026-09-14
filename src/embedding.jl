@@ -1,4 +1,4 @@
-struct MarkovianEmbedding{
+struct Jame{
     RTYPE <: Real,
     ITYPE,
     MK <: Hermitian{<: Union{RTYPE, Complex{RTYPE}}},
@@ -15,7 +15,7 @@ struct MarkovianEmbedding{
     drft :: MM
 end
 
-_index(me :: MarkovianEmbedding, i :: AbstractString) = (
+_index(me :: Jame, i :: AbstractString) = (
     i in ("s", "sys", "system") ? me.index_s : (
         i in ("q", "quant", "quantum") ? me.index_q : (
             i in ("c", "cl", "class", "classical") ? me.index_c :
@@ -24,7 +24,7 @@ _index(me :: MarkovianEmbedding, i :: AbstractString) = (
     )
 )
 
-_index(me :: MarkovianEmbedding, i :: Symbol) = (
+_index(me :: Jame, i :: Symbol) = (
     i in (:s, :sys, :system) ? me.index_s : (
         i in (:q, :quant, :quantum) ? me.index_q : (
             i in (:c, :cl, :class, :classical) ? me.index_c :
@@ -33,52 +33,52 @@ _index(me :: MarkovianEmbedding, i :: Symbol) = (
     )
 )
 """
-    kossakovski(me :: MarkovianEmbedding[, i, j])
+    kossakovski(me :: Jame[, i, j])
 
 Returns Kossakovski matrix of Markovian embedding `me`. If indices `i` and `j` are specified, returns corresponding block of the matrix. Possible values of `i` and `j` are:
 - `"s"`, `"sys"`, `"system"`, `:s`, `:sys`, `:system` for the coupling operator block
 - `"q"`, `"quant"`, `"quantum"`, `:q`, `:quant`, `:quantum` for quantum degrees of freedom of the embedding
 - `"c"`, `"cl"`, `"class"`, `"classical"`, `:c`, `:cl`, `:class`, `:classical` for classical degrees of freedom of the embedding
 """
-kossakovski(me :: MarkovianEmbedding) = me.koss
-kossakovski(me :: MarkovianEmbedding, i, j) = me.koss[_index(me, i), _index(me, j)]
+kossakovski(me :: Jame) = me.koss
+kossakovski(me :: Jame, i, j) = me.koss[_index(me, i), _index(me, j)]
 
 """
-    hamiltonian(me :: MarkovianEmbedding[, i, j])
+    hamiltonian(me :: Jame[, i, j])
 
 Returns Hamiltonian matrix of Markovian embedding `me`. If indices `i` and `j` are specified, returns corresponding block of the matrix. Possible values of `i` and `j` are:
 - `"s"`, `"sys"`, `"system"`, `:s`, `:sys`, `:system` for the coupling operator block
 - `"q"`, `"quant"`, `"quantum"`, `:q`, `:quant`, `:quantum` for quantum degrees of freedom of the embedding
 - `"c"`, `"cl"`, `"class"`, `"classical"`, `:c`, `:cl`, `:class`, `:classical` for classical degrees of freedom of the embedding
 """
-hamiltonian(me :: MarkovianEmbedding) = me.hmlt
-hamiltonian(me :: MarkovianEmbedding, i, j) = me.hmlt[_index(me, i), _index(me, j)]
+hamiltonian(me :: Jame) = me.hmlt
+hamiltonian(me :: Jame, i, j) = me.hmlt[_index(me, i), _index(me, j)]
 
 """
-    drift(me :: MarkovianEmbedding)
+    drift(me :: Jame)
 
 Returns drift matrix of classical degrees of freedom of Markovian embedding `me`.
 """
-drift(me :: MarkovianEmbedding) = me.drft
+drift(me :: Jame) = me.drft
 
 """
-    ndof(me :: MarkovianEmbedding[, i])
+    ndof(me :: Jame[, i])
 
 Returns size of Hamiltonian and Kossakovski matrices of Markovian embedding `me`. If index `i` is specified, returns size of the respective block. Possible values of `i` are
 - `"s"`, `"sys"`, `"system"`, `:s`, `:sys`, `:system` for the coupling operator block
 - `"q"`, `"quant"`, `"quantum"`, `:q`, `:quant`, `:quantum` for quantum degrees of freedom of the embedding
 - `"c"`, `"cl"`, `"class"`, `"classical"`, `:c`, `:cl`, `:class`, `:classical` for classical degrees of freedom of the embedding
 """
-ndof(me :: MarkovianEmbedding) = length(me.index_s) + length(me.index_q) + length(me.index_c)
-ndof(me :: MarkovianEmbedding, i) = length(_index(me, i))
+ndof(me :: Jame) = length(me.index_s) + length(me.index_q) + length(me.index_c)
+ndof(me :: Jame, i) = length(_index(me, i))
 
 """
-    symplform(me :: MarkovianEmbedding)
+    symplform(me :: Jame)
 
 Returns symplectic `Ω` form which specifies commutator matrix of the quantum degrees of freedom of Markovian embedding `me`:
     [x̂ⱼ, x̂ₖ] = i Ωⱼₖ
 """
-symplform(me :: MarkovianEmbedding{T}) where {T} = kron(
+symplform(me :: Jame{T}) where {T} = kron(
     I(length(me.index_q) ÷ 2), 
     [zero(T) one(T); -one(T) zero(T)]
 )
@@ -120,11 +120,11 @@ end
 bcf_factor(J :: FactorizedBSD, T :: Real, args...; kwargs...) = bcf_factor(J, bose_factor(T, args...; kwargs...))
 
 
-MarkovianEmbedding(J :: FactorizedBSD, T :: Real, args...; kwargs...) = MarkovianEmbedding(
+Jame(J :: FactorizedBSD, T :: Real, args...; kwargs...) = Jame(
     bcf_factor(J, T, args...; kwargs...)
 )
 
-function MarkovianEmbedding(
+function Jame(
     S_factor :: RationalPencil,
     approx :: AbstractApprox = Approx(S_factor)
 )
@@ -186,7 +186,7 @@ function MarkovianEmbedding(
         K                       -symm(Ω \ M[i_q, i_q])  (-Ω \ M[i_q, i_c]);
         (sqrt(2) * L[i_c, :])   (-Ω \ M[i_q, i_c])'     zeros(ker, ker)
     ])
-    return MarkovianEmbedding(
+    return Jame(
         1 : size(W, 1),
         size(W, 1) .+ (1 : rk),
         (size(W, 1) + rk) .+ (1 : ker),

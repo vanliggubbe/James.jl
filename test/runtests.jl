@@ -1,4 +1,4 @@
-using Jame
+using James
 using Test
 using Random
 using LinearAlgebra
@@ -36,7 +36,7 @@ end
     for T in [1.0, 2.0, 3.0]
         T = 1.0
         S_factor = bcf_factor(J, T, 1e-7)
-        @test Jame.deep_eltype(S_factor.poly) <: Real
+        @test James.deep_eltype(S_factor.poly) <: Real
         @test eltype(S_factor.L) <: Real
         @test eltype(S_factor.M) <: Real
         for x in LinRange(-20, 20, 10)
@@ -54,7 +54,7 @@ end
     J = FactorizedBSD(randn(rng, 10, 2), M, randn(rng, 10, 2))
 
     T = 1.0
-    me = MarkovianEmbedding(J, T, 1e-7)
+    me = Jame(J, T, 1e-7)
 
     Ω = symplform(me)
     D_qq = kossakovski(me, :q, :q)

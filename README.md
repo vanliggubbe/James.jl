@@ -11,7 +11,7 @@ Bath spectral density is specified by three real entry matrices `L`, `M`, and `R
 
 $$\boldsymbol J(\omega) = \omega \boldsymbol L^\mathrm{T} (\omega + i \boldsymbol M)^{-1} \boldsymbol R \boldsymbol R^\mathrm{T} \left(\omega - i \boldsymbol M^\mathrm T\right)^{-1} \boldsymbol L .$$
 
-All the eigenvalues of \\(\boldsymbol M\\) must have positive real parts.
+All the eigenvalues of `M` must have positive real parts.
 ```julia
 # generate random matrices
 L = randn(10, 3)
