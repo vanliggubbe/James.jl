@@ -3,6 +3,8 @@
 const RealOrComplex{T} = Union{T, Complex{T}} where {T}
 const AbstractScalarOrMatrix{T} = Union{T, AbstractMatrix{T}} where {T}
 
+isimag(x, y...) = isreal(im * x, y...)
+
 symm(a) = (a + transpose(a)) / 2 
 skew(a) = (a - transpose(a)) / 2
 
@@ -137,6 +139,7 @@ ishurwitz(A :: AbstractMatrix, :: Val{true}) = ishurwitz(A)
 Base.isnan(a :: AbstractArray) = any(isnan, a)
 
 @inline unsafe_phase_factor(x) = (x / abs(x))
+@inline phase_factor(x :: Real) = (iszero(x) ? one(x) : sign(x))
 @inline phase_factor(x) = (iszero(x) ? one(x) : unsafe_phase_factor(x))
 
 # takagi factorization

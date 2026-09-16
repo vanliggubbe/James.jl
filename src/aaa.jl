@@ -215,6 +215,24 @@ function aaa_symm(
     return zs[αs], ws, fs[αs], er
 end
 
+function barycentric_poles(xs, ws)
+    n = length(xs)
+
+    A = zeros(promote_type(eltype(xs), eltype(ws)), n + 1, n + 1)
+    A[2 : end, 1] .= map(sqrt ∘ abs, ws)
+    A[1, 2 : end] .= A[2 : end, 1] .* phase_factor.(ws)
+    #A[2 : end, 1] .= one(eltype(A))
+    #A[1, 2 : end] .= ws
+    for (i, x) in enumerate(xs)
+        A[i + 1, i + 1] = x
+    end
+
+    B = Matrix(one(eltype(A)) * I, n + 1, n + 1)
+    B[1, ] = 0
+
+    return filter(isfinite, eigvals(A, B))
+end
+
 function scalar_aaa(
     f :: Function,
     a :: Real,
@@ -242,8 +260,17 @@ function scalar_aaa(
             fun(j) = abs(fs[j] - gs[j])
             findmax(fun, js)
         end
+        @debug "$(xs[js[j]]) $(er)"
         if er < tol / 2
-            break
+            # check bad poles
+            poles = real(filter(isreal, barycentric_poles(xs[αs], ws)))
+            condition(x) = (
+                (include_a ? (x < a) : (x <= a)) || 
+                (include_b ? (x > b) : (x >= b))
+            )
+            if all(condition, poles)
+                break
+            end
         end
         jj = js[j]
             
@@ -285,7 +312,16 @@ function scalar_aaa(
             V[:, end]
         end
 
-        gs[js] .= (C * (ws .* fs[αs])) ./ (C * ws)
+        gs[js] .= xmul(C, (ws .* fs[αs])) ./ xmul(C, ws)
     end
     xs[αs], ws, fs[αs]
+end
+
+# slow but accurate
+function xmul(A :: Matrix, b :: Vector)
+    c = Vector{promote_type(eltype(A), eltype(b))}(undef, size(A, 1))
+    @inbounds for j in eachindex(c)
+        c[j] = xsum(p * q for (p, q) in zip((@view A[j, :]), b))
+    end
+    return c
 end

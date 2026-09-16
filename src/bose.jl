@@ -16,83 +16,117 @@ end
 # / [x ^ 2 + x ^ 4 / 3! + x ^ 6 / 5!] 
 # = [x / 2 - x / 6 + x ^ 4 / 
 #
-_bose(x) = (
-    abs(x) < eps(eltype(x)) ^ 0.25 ?
-    (one(x) + x ^ 2 / 10) / (one(x) + x ^ 2 / 6) / 3 :
-    (coth(x) - inv(x)) / x
-)
+
+function _bose(ω :: Real, p :: Tuple{Real, Real}) 
+    T, Ω = p
+    RTYPE = float(promote_type(typeof(ω), typeof(T), typeof(Ω)))
+    iszero(ω) && return convert(RTYPE, 2 * T)
+
+    weight = one(RTYPE) + (ω / Ω) ^ 2
+    iszero(T) && return convert(RTYPE, abs(ω) / weight)
+    ω * coth(ω / (2 * T)) / weight
+end
 
 _inversion(x) = (one(x) - x) / x
 
-function _coth_approx(δ :: Real, Λ :: Real = one(δ); aaa_kwargs...)
-    end
-
 function bose_factor(
-        temperature :: Real,
-        δ :: Real = sqrt(eps(float(typeof(temperature)))),
-        Ω :: Real = temperature * 4;
+        T :: Real,
+        Ω :: Real = max(4 * T, 2 * one(T)),
+        Λ :: Real = max(2 * T, one(T));
+        δ :: Real = sqrt(eps(float(promote_type(typeof(T), typeof(Ω), typeof(Λ))))),
         tol = δ / 64,
         aaa_kwargs...
 )
-    @argcheck ispos(temperature)
+    @argcheck ispos(Λ)
+    @argcheck ispos(Ω)
+    @argcheck isnneg(T)
     @argcheck ispos(δ)
     # get AAA approximation for coth(x / 2T)
     
-    Λ = Ω / (2 * temperature)
-    Λ² = Λ ^ 2
     xs, ws, fs = scalar_aaa(
-        _bose ∘ sqrt ∘ Base.Fix2(*, Λ²) ∘ _inversion,
+        Base.Fix2(_bose, (T, Ω)) ∘
+        Base.Fix2(*, Λ) ∘
+        sqrt ∘ _inversion,
         zero(δ), one(δ), false, false;
-        tol,
-        aaa_kwargs...
+        tol, aaa_kwargs...
     )
-    
-    poles, constant = let n = length(xs)
-        A = zeros(promote_type(eltype(xs), eltype(ws)), n + 1, n + 1)
-        A[2 : end, 1] .= map(sqrt ∘ abs, ws)
-        A[1, 2 : end] .= A[2 : end, 1] .* sign.(ws)
-        for (i, x) in enumerate(xs)
-            A[i + 1, i + 1] = x
-        end
 
-        B = zeros(eltype(A), n + 1, n + 1)
-        B[2 : end, 2 : end] .= I(n)
-
-        map(
-            (-) ∘ sqrt ∘ complex ∘ Base.Fix2(*, Λ²) ∘ _inversion,
-            filter(isfinite, eigvals(A, B))
-        ), xsum(fs .* ws ./ xs) / xsum(ws ./ xs) + δ
+    # Find poles of the approximation
+    poles = map(
+        Base.Fix2(*, Λ) ∘ sqrt ∘ complex,
+        barycentric_poles(_inversion.(xs), ws ./ xs)
+    )
+    if any(isreal, poles)
+        @error "Roots on the real axis: $(real(filter(isreal, poles)))"
+        error("Failed to construct rational approximation of n_bose(-ω) * ω")
     end
-    fs .+= δ
+    poles .*= -sign.(imag(poles))
 
-    roots = let zs = Λ * sqrt.((1 .- xs) ./ xs)
-        a = -xsum(ws .* fs ./ xs)
-
+    # Find roots
+    roots, constant = let ωs = Λ * sqrt.(_inversion.(xs))
+        a₀ = -xsum(ws .* fs ./ xs) / Ω ^ 2
         ps = -ws ./ xs
-        qs = -ws ./ xs .* (1 .+ fs .* (zs .^ 2))
+        q₀s = -ws .* fs ./ xs .* (1 .+ (ωs / Ω) .^ 2)
 
-        A = [
-            -a kron(ones(length(ps)), [-1, 0])';
-            (kron(ps, [1, 0]) + kron(qs ./ zs, [0, 1])) kron(Diagonal(zs), [0 1; 1 0]);
-        ]
-        B = Matrix(one(eltype(A)) * I, size(A))
+        δa = -xsum(ws ./ xs) / Ω ^ 2 * δ
+        δqs = -ws ./ xs .* (1 .+ (ωs / Ω) .^ 2) * δ
+        i = 1
+        local roots
+        while true
+            a = a₀ + i * δa
+            qs = q₀s + i * δqs
 
-        B[1, 1] = 0
-        roots = filter(isfinite, eigvals(A, B))
-        if any(isreal, roots)
-            @error "Roots on the real axis: $(real(filter(isreal, roots)))"
-            error("Rational approximation for n_bose(-ω) * ω is not positive. Try increasing `δ` while keeping `tol`.")
+            A = [
+                -a kron(ones(length(ps)), [-1, 0])';
+                (kron(ps, [1, 0]) + kron(qs ./ ωs, [0, 1])) kron(Diagonal(ωs), [0 1; 1 0]);
+            ]
+
+            B = Matrix(one(eltype(A)) * I, size(A))
+            B[1, 1] = 0
+
+            roots = filter(isfinite, eigvals(A, B))
+
+            # if no real roots, then good to go
+            if !any(isreal, roots)
+                break
+            end
+            # otherwise trying to increase by small number
+            i += 1
         end
-        filter(isnpos ∘ imag, roots)
+        constant = sqrt((xsum(fs .* ws ./ xs) / xsum(ws ./ xs) + i * δ) / 2) / Ω 
+
+        filter(isneg ∘ imag, roots), constant
     end
+
+    # check for spurious roots
+    # TODO make it cleaner
+    idx = findall(Base.Fix2(isimag, Approx()), roots) 
+    if !isempty(idx)
+        # poles to delete and roots to delete
+        ptd = eltype(idx)[]
+        rtd = eltype(idx)[]
+        for i in idx
+            j = findall(≈(im * imag(roots[i])), poles)
+            @check length(j) < 2
+            if !isempty(j)
+                push!(ptd, first(j))
+                push!(rtd, i)
+            end
+        end
+        sort!(ptd; by = (-))
+        sort!(rtd; by = (-))
+        for i in ptd
+            deleteat!(poles, i)
+        end
+        for i in rtd
+            deleteat!(roots, i)
+        end
+    end
+
     @check length(poles) + 1 == length(roots)
-    @check isreal(im * poles, Approx(poles))
+    @check isimag(poles, Approx(poles))
 
-    roots .*= 2 * temperature
-    poles .*= 2 * temperature
-    constant /= 4 * temperature
-
-    regular = sqrt(constant) * [xsum([poles; -roots]), one(eltype(roots))]
+    regular = constant * [xsum([poles; -roots]), one(eltype(roots))]
     residues = [
         exp(
             xsum([
@@ -100,7 +134,7 @@ function bose_factor(
                 [(j == i ? zero(q) : -log(p - q)) for (j, q) in enumerate(poles)]
             ])
         ) for (i, p) in enumerate(poles)
-    ] * sqrt(constant)
+    ] * constant
     left = map(sqrt ∘ abs, residues)
     return RationalPencil(
         regular, -im,

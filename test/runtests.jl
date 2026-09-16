@@ -5,12 +5,15 @@ using LinearAlgebra
 
 
 @testset "Bose factorization" begin
-    for T in [1, 2, 3]
-        f = bose_factor(T, 1e-8)
-        g_exact(x) = (coth(x / 2 / T) + 1) * x / 2
+    for T in [0.0, 0.1, 1, 2, 3]
+        g_exact(x) = iszero(T) ? (x + abs(x)) / 2 : (coth(x / 2 / T) + 1) * x / 2
+        f = bose_factor(T, 3, 1; δ = 1e-8)
 
-        for x in LinRange(-10 * T, 10 * T, 8)
-            @test isapprox(abs2(f(x)) / x, g_exact(x) / x; atol = 1e-4, rtol = 1e-5)
+        # allow not too close approximations
+        atol = iszero(T) ? 1e-4 : 1e-5
+        rtol = 1e-5
+        for x in LinRange(-20, 20, 26)
+            @test isapprox(abs2(f(x)), g_exact(x); atol, rtol)
         end
     end 
 end
@@ -34,8 +37,7 @@ end
     J = FactorizedBSD(randn(rng, 10, 2), M, randn(rng, 10, 2))
     
     for T in [1.0, 2.0, 3.0]
-        T = 1.0
-        S_factor = bcf_factor(J, T, 1e-7)
+        S_factor = bcf_factor(J, T; δ = 1e-7)
         @test James.deep_eltype(S_factor.poly) <: Real
         @test eltype(S_factor.L) <: Real
         @test eltype(S_factor.M) <: Real
@@ -54,7 +56,7 @@ end
     J = FactorizedBSD(randn(rng, 10, 2), M, randn(rng, 10, 2))
 
     T = 1.0
-    me = Jame(J, T, 1e-7)
+    me = Jame(J, T; δ = 1e-7)
 
     Ω = symplform(me)
     D_qq = kossakovski(me, :q, :q)
