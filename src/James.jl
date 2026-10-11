@@ -3,9 +3,11 @@ module James
 import ArgCheck: @argcheck, @check
 import MatrixEquations: arec, lyapc
 import IsApprox: AbstractApprox, Approx, EachApprox, isunitary, ishermitian, issymmetric
-import LinearAlgebra: Symmetric, Hermitian, Diagonal, norm as frnorm, opnorm, I, mul!, schur, eigvals, eigen, svd, svd!, rank, nullspace, isposdef, diag, lmul!, det
-import Xsum: xsum
+import LinearAlgebra: Symmetric, Hermitian, Diagonal, norm as frnorm, opnorm, I, mul!, schur, eigvals, eigen, svd, svd!, rank, nullspace, isposdef, diag, lmul!, det, qr
+import KahanSummation: sum_kbn
 import BlockArrays: BlockedArray, BlockArray, Block, undef_blocks
+import InverseFunctions: inverse
+import DoubleFloats: Double64
 
 include("utils.jl")
 include("pencil.jl")

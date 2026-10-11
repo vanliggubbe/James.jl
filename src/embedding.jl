@@ -117,11 +117,17 @@ function bcf_factor(J :: FactorizedBSD, f_bose :: RationalPencil)
     )
 end
 
-bcf_factor(J :: FactorizedBSD, T :: Real, args...; kwargs...) = bcf_factor(J, bose_factor(T, args...; kwargs...))
+function bcf_factor(J :: FactorizedBSD, T :: Real; kwargs...)
+    A2, A1 = norm_estimate(J)
+    bcf_factor(
+        J,
+        first(bose_factor(T, sqrt(A1 / A2); kwargs...))
+    )
+end
 
 
-Jame(J :: FactorizedBSD, T :: Real, args...; kwargs...) = Jame(
-    bcf_factor(J, T, args...; kwargs...)
+Jame(J :: FactorizedBSD, T :: Real; kwargs...) = Jame(
+    bcf_factor(J, T; kwargs...)
 )
 
 function Jame(
@@ -135,7 +141,6 @@ function Jame(
 
     atol = get(approx.kw, :atol, default_atol(S_factor))
     rtol = get(approx.kw, :rtol, default_rtol(atol, S_factor))
-    norm = get(approx.kw, :norm, frnorm)
 
     W = first(S_factor.poly)
     L = S_factor.L
@@ -146,7 +151,7 @@ function Jame(
     # and reduce it to the Darboux form
     Θ = lyapc(M, -2 * imag(R * R'))
     rk, U, U_t, U_inv, U_tinv = let (U, S, V) = svd(Θ);
-        ε = max(rtol * norm(Θ), atol)
+        ε = max(rtol * first(S), atol)
         sup = findall(>(ε), S)
 
         @inbounds for i in sup
@@ -160,10 +165,10 @@ function Jame(
     end
 
     # transform everything to the Darboux basis
-    Θ = nullify!(U_inv * Θ * U_tinv; atol, rtol, norm)
-    M = nullify!(U_inv * M * U; atol, rtol, norm)
-    R = nullify!(U_inv * R; atol, rtol, norm)
-    L = nullify!(U_t * L; atol, rtol, norm)
+    Θ = nullify!(U_inv * Θ * U_tinv; atol, rtol, norm = opnorm)
+    M = nullify!(U_inv * M * U; atol, rtol, norm = opnorm)
+    R = nullify!(U_inv * R; atol, rtol, norm = opnorm)
+    L = nullify!(U_t * L; atol, rtol, norm = opnorm)
 
     # symplectic block
     Ω = (@view Θ[1 : rk, 1 : rk])
