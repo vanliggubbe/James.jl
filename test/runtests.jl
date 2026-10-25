@@ -16,17 +16,6 @@ using LinearAlgebra
     end 
 end
 
-#=
-@testset "BSD factorization" begin
-    J = CausalBSD([1 1], ones(1, 1), [1 1])
-    F = FactorizedBSD(J)
-
-    for x in LinRange(-10, 10, 8)
-        @test isapprox(J(x), F(x))
-    end
-end
-=#
-
 @testset "BCF factorization" begin
     rng = MersenneTwister(1)
     # generate a random BSD
@@ -35,7 +24,7 @@ end
     J = FactorizedBSD(randn(rng, 10, 2), M, randn(rng, 10, 2))
     
     for T in [1.0, 2.0, 3.0]
-        S_factor = bcf_factor(J, T; δ = 1e-7)
+        S_factor, _ = bcf_factor(J, T; δ = 1e-7)
         @test James.deep_eltype(S_factor.poly) <: Real
         @test eltype(S_factor.L) <: Real
         @test eltype(S_factor.M) <: Real

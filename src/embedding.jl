@@ -127,7 +127,7 @@ end
 
 
 Jame(J :: FactorizedBSD, T :: Real; kwargs...) = Jame(
-    bcf_factor(J, T; kwargs...)
+    first(bcf_factor(J, T; kwargs...))
 )
 
 function Jame(
