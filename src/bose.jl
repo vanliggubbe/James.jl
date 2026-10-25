@@ -14,7 +14,7 @@ function _bose(ω :: Real, p :: Tuple{Real, Real, Real})
 
     weight = one(RTYPE) + (ω / Ω) ^ 2
     iszero(T) && return convert(RTYPE, abs(ω) / weight)
-    ((ω * coth(ω / (2 * T)) + 0 * δ * ω ^ 2 / Ω ^ 2 / 2) / weight)
+    (ω * coth(ω / (2 * T)) / weight)
 end
 
 _inversion(x) = iszero(x) ? convert(typeof(x), Inf) : (one(x) - x) / x
@@ -24,6 +24,7 @@ function bose_factor(
         Ω :: Real = max(4 * T, 2 * one(T));
         Λ :: Real = Ω,
         δ :: Real = sqrt(eps(float(promote_type(typeof(T), typeof(Ω), typeof(Λ))))),
+        weight = Returns(1),
         tol = δ / 2,
         aaa_kwargs...
 )
@@ -45,72 +46,19 @@ function bose_factor(
         Base.Fix2(*, Λ_128) ∘
         sqrt ∘ _inversion,
         zero(Double64), one(Double64), true, false;
+        weight = weight ∘ Base.Fix2(*, Λ_128) ∘ sqrt ∘ _inversion,
         force_poles = [Ω == Λ ? Double64(Inf) : (Λ_128 ^ 2 / (Λ_128 ^ 2 - Ω_128 ^ 2))],
         x_map = sqrt,
         tol = tol_128, aaa_kwargs...
     )
-    #1 + ω ^ 2 / Ω ^ 2 =
-    #1 + Λ ^ 2 / Ω ^ 2 * (1 - x) / x
-    #(Ω ^ 2 * x + Λ ^ 2 * (1 - x)) / x
-
-    maxdev, mindev = let
-        p = sortperm(xs)
-        curx = zero(eltype(fs))
-        curn = zero(eltype(fs))
-        for (a, b) in zip(xs[p], [xs[p[2 : end]]; one(eltype(xs))])
-            l, r = a, b
-            if isone(b)
-                curx = max(curx, sum_kbn(fs .* ws ./ (b .- xs)) / sum_kbn(ws ./ (b .- xs)) - 2 * T_128)
-                curn = min(curn, sum_kbn(fs .* ws ./ (b .- xs)) / sum_kbn(ws ./ (b .- xs)) - 2 * T_128)
-            end
-            for _ in 1 : 50
-                xl, xr = (2 * l + r) / 3, (l + 2 * r) / 3
-                fl = sum_kbn(fs .* ws ./ (xl .- xs)) / sum_kbn(ws ./ (xl .- xs)) - _bose(Λ_128 * sqrt(_inversion(xl)), (T_128, Ω_128, δ_128))
-                fr = sum_kbn(fs .* ws ./ (xr .- xs)) / sum_kbn(ws ./ (xr .- xs)) - _bose(Λ_128 * sqrt(_inversion(xr)), (T_128, Ω_128, δ_128))
-                if isnan(fl) || isnan(fr)
-                    break
-                end
-                curx = max(curx, fl)
-                curx = max(curx, fr)
-                if fl > fr
-                    r = xr
-                else
-                    l = xl
-                end
-            end
-            l, r = a, b
-            for _ in 1 : 50
-                xl, xr = (2 * l + r) / 3, (l + 2 * r) / 3
-                fl = sum_kbn(fs .* ws ./ (xl .- xs)) / sum_kbn(ws ./ (xl .- xs)) - _bose(Λ_128 * sqrt(_inversion(xl)), (T_128, Ω_128, δ_128))
-                fr = sum_kbn(fs .* ws ./ (xr .- xs)) / sum_kbn(ws ./ (xr .- xs)) - _bose(Λ_128 * sqrt(_inversion(xr)), (T_128, Ω_128, δ_128))
-                if isnan(fl) || isnan(fr)
-                    break
-                end
-                curn = min(curn, fl)
-                curn = min(curn, fr)
-                if fl < fr
-                    r = xr
-                else
-                    l = xl
-                end
-            end
-        end
-        curx, curn
-    end
-    #println(maxdev, " ", mindev)
-
     if iszero(first(ws))
         ws = ws[2 : end]
         xs = xs[2 : end]
         fs = fs[2 : end]
     end
 
-    # Find poles of the approximation
-    poles = if iszero(first(xs))
-        # p = barycentric_poles(xs, ws)
-        # poles = map(sqrt ∘ complex ∘ _inversion, p)
-        # poles .*= Λ_128
-        
+    # Find poles, roots, and constant factor of the approximation
+    poles, roots, constant = if iszero(first(xs))
         poles = map(
             Base.Fix2(*, Λ_128) ∘ sqrt ∘ complex,
             barycentric_poles(
@@ -124,27 +72,7 @@ function bose_factor(
             @error "Roots on the real axis: $(real(filter(isreal, poles)))"
             error("Failed to construct rational approximation of n_bose(-ω) * ω")
         end
-        -(poles .* sign.(imag(poles)))
-    else
-        # p = barycentric_poles(xs, ws)
-        # poles = map(sqrt ∘ complex ∘ _inversion, p)
-        # poles .*= Λ_128
 
-        poles = map(
-            Base.Fix2(*, Λ_128) ∘ sqrt ∘ complex,
-            barycentric_poles(_inversion.(xs), ws ./ xs)
-        )
-
-        if any(isreal, poles)
-            @error "Roots on the real axis: $(real(filter(isreal, poles)))"
-            error("Failed to construct rational approximation of n_bose(-ω) * ω")
-        end
-        -(poles .* sign.(imag(poles)))
-    end
-
-    # Find roots
-    right = abs(mindev)
-    roots, constant = if iszero(first(xs))
         ws .*= sign(first(ws))
         w₀ = first(ws)
         f₀ = first(fs)
@@ -153,19 +81,18 @@ function bose_factor(
         xs = xs[2 : end]
         
         ωs = Λ_128 * sqrt.(_inversion.(xs))
-        #a₀ = -sum(ws .* fs ./ xs) / Ω ^ 2 + w₀ * f₀ / Λ ^ 2
         a₀ = sum_kbn([w₀ * f₀ / Λ_128 ^ 2; -ws .* fs ./ xs / Ω_128 ^ 2])
         b  = w₀ / Λ_128 ^ 2
         c₀ = f₀ * w₀ / Λ_128 ^ 2 / Ω_128 ^ 2
         ps = -ws ./ xs
         q₀s = -ws .* fs ./ xs .* (one(Double64) .+ (ωs / Ω_128) .^ 2)
 
-        #δa = (-sum(ws ./ xs) / Ω ^ 2 + w₀ / Λ ^ 2)
         δa = sum_kbn([w₀ / Λ_128 ^ 2; -ws ./ xs / Ω_128 ^ 2])
         δc = w₀ / Λ_128 ^ 2 / Ω_128 ^ 2
         δqs = -ws ./ xs .* (one(Double64) .+ (ωs / Ω_128) .^ 2)
 
         left = zero(Double64)
+        right = δ_128
         i = 0
 
         local roots
@@ -203,7 +130,6 @@ function bose_factor(
                 end
             else
                 if i == 0
-                    #display(filter(isreal, tmp))
                     right *= 2
                 else
                     left = shift
@@ -211,8 +137,18 @@ function bose_factor(
             end
         end
         constant = sqrt(right / 2) / Ω_128
-        filter(isneg ∘ imag, roots), constant
+        -(poles .* sign.(imag(poles))), filter(isneg ∘ imag, roots), constant
     else
+        poles = map(
+            Base.Fix2(*, Λ_128) ∘ sqrt ∘ complex,
+            barycentric_poles(_inversion.(xs), ws ./ xs)
+        )
+
+        if any(isreal, poles)
+            @error "Roots on the real axis: $(real(filter(isreal, poles)))"
+            error("Failed to construct rational approximation of n_bose(-ω) * ω")
+        end
+
         ωs = Λ_128 * sqrt.(_inversion.(xs))
         a₀ = -sum_kbn(ws .* fs ./ xs) / Ω_128 ^ 2
         ps = -ws ./ xs
@@ -222,6 +158,7 @@ function bose_factor(
         δqs = -ws ./ xs .* (one(Double64) .+ (ωs / Ω_128) .^ 2)
 
         left = zero(Double64)
+        right = δ_128
         i = 0
 
         local roots
@@ -261,7 +198,7 @@ function bose_factor(
             end
         end
         constant = sqrt((sum_kbn(fs .* ws ./ xs) / sum_kbn(ws ./ xs) + right) / 2) / Ω_128
-        filter(isneg ∘ imag, roots), constant
+        -(poles .* sign.(imag(poles))), filter(isneg ∘ imag, roots), constant
     end
 
     @check length(poles) + 1 == length(roots)
@@ -289,6 +226,5 @@ function bose_factor(
         Diagonal(convert.(RTYPE,real(im * poles))), 
         convert.(complex(RTYPE), residues ./ left)
     )
-    #println(maxdev, " ", mindev, " ", right)
-    return f, convert(RTYPE, right + maxdev)
+    return f, right
 end

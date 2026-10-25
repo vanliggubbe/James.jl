@@ -10,14 +10,7 @@ using LinearAlgebra
             f, acc = bose_factor(T, Ω; δ = 1e-8)
             @test acc < 1e-4
 
-            # allow not too close approximations
             xs = LinRange(-20, 20, 26)
-            for x in xs
-                if abs2(f(x)) < g_exact(x)
-                    println(T, " ", Ω)
-                end
-                println(abs2(f(x)) - g_exact(x), " ", acc * (1 + (x / Ω) ^ 2))
-            end
             @test all(0 .<= abs2.(f.(xs)) - g_exact.(xs) .<= acc * (1 .+ (xs / Ω) .^ 2))
         end
     end 

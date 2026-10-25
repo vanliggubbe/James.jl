@@ -75,7 +75,7 @@ ndof(me :: Jame, i) = length(_index(me, i))
 """
     symplform(me :: Jame)
 
-Returns symplectic `Ω` form which specifies commutator matrix of the quantum degrees of freedom of Markovian embedding `me`:
+Returns symplectic form `Ω` which specifies commutator matrix of the quantum degrees of freedom for Markovian embedding `me`:
     [x̂ⱼ, x̂ₖ] = i Ωⱼₖ
 """
 symplform(me :: Jame{T}) where {T} = kron(
@@ -119,10 +119,10 @@ end
 
 function bcf_factor(J :: FactorizedBSD, T :: Real; kwargs...)
     A2, A1 = norm_estimate(J)
-    bcf_factor(
-        J,
-        first(bose_factor(T, sqrt(A1 / A2); kwargs...))
-    )
+    Ω = sqrt(A1 / A2)
+    #weight(ω) = opnorm(J(ω) / ω) * (1 + (ω / Ω) ^ 2)
+    factor, accuracy = bose_factor(T, Ω; kwargs...)
+    return bcf_factor(J, factor), 2 * A1 * accuracy
 end
 
 
@@ -197,13 +197,5 @@ function Jame(
         (size(W, 1) + rk) .+ (1 : ker),
         D, H, M[rk + 1 : end, rk + 1 : end]
     )
-    #=
-    return (
-        Matrix(Ω), 
-        BlockedArray(D, [size(L, 2), rk, ker], [size(L, 2), rk, ker]),
-        BlockedArray(H, [size(L, 2), rk, ker], [size(L, 2), rk, ker]),
-        M[rk + 1 : end, rk + 1 : end]
-    )
-    =#
 end
 

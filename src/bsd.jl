@@ -29,9 +29,12 @@ _J_call(J :: FactorizedBSD, ω) = ω * spectral_factor(J, ω) * (spectral_factor
 
 (J :: FactorizedBSD)(ω) = _J_call(J, ω)
 
+_hermitian(x :: AbstractMatrix) = Hermitian(x)
+_hermitian(x :: Number) = real(x)
+
 function (J :: FactorizedBSD)(ω :: Real)
     f = spectral_factor(J, ω)
-    return Hermitian(ω * f * f')
+    return _hermitian(ω * f * f')
 end
 
 """
@@ -47,6 +50,10 @@ _norm_estimate(L, M, R) = min(
     __norm_estimate(L, M, R),
     __norm_estimate(conj(R), transpose(M), conj(L))
 )
+
+_opnorm(a :: AbstractMatrix) = opnorm(a)
+_opnorm(a :: AbstractVector) = frnorm(a)
+_opnorm(a :: Number) = abs(a)
 
 function __norm_estimate(L, M, R)
     ret = real(promote_type(
@@ -64,7 +71,7 @@ function __norm_estimate(L, M, R)
         Q = Diagonal(map(sqrt, Λ))
         isqP = Ψ * (Q \ Ψ')
         γ = inv(minimum(eigvals(isqP * A * isqP)))
-        push!(ret, γ * opnorm(isqP * L) * opnorm(isqP \ R))
+        push!(ret, γ * _opnorm(isqP * L) * _opnorm(isqP \ R))
     end
     return minimum(ret)
 end
@@ -84,8 +91,8 @@ function _norm_estimate_2(L, M, R)
         Λ, Ψ = eigen(Hermitian(P))
         Q = Diagonal(map(sqrt, Λ))
         isqP = Ψ * (Q \ Ψ')
-        γ = inv(minimum(eigvals(isqP * A * isqP))) * opnorm(isqP \ (M * isqP))
-        push!(ret, γ * opnorm(isqP * L) * opnorm(isqP \ R))
+        γ = inv(minimum(eigvals(isqP * A * isqP))) * _opnorm(isqP \ (M * isqP))
+        push!(ret, γ * _opnorm(isqP * L) * _opnorm(isqP \ R))
     end
     return minimum(ret)
 
@@ -94,7 +101,7 @@ end
 function _norm_estimate_freq(L, M, R)
     # ω Lᵀ (ω + i M)⁻¹ R = 
     # Lᵀ R - i Lᵀ (ω + i M)⁻¹ M R
-    return opnorm(L' * R) + min(
+    return _opnorm(L' * R) + min(
         _norm_estimate(L, M, M * R),
         _norm_estimate(M' * L, M, R),
         _norm_estimate_2(L, M, R)
@@ -124,7 +131,7 @@ function norm_estimate(J :: FactorizedBSD)
     ) ^ 2
 
     B = min(
-        B, opnorm(L' * R) ^ 2 +
+        B, _opnorm(L' * R) ^ 2 +
         2 * min(
             _norm_estimate(L, M, M * R * R' * L),
             _norm_estimate(M' * L, M, R * R' * L),
@@ -138,7 +145,7 @@ function norm_estimate(J :: FactorizedBSD)
     )
 
     B = min(
-        B, opnorm(R' * L) ^ 2 +
+        B, _opnorm(R' * L) ^ 2 +
         2 * min(
             _norm_estimate(R, M', M' * L * L' * R),
             _norm_estimate(M * R, M', L * L' * R),

@@ -8,9 +8,12 @@ struct RationalPencil{
     R :: TR
 end
 
+_scalar_convert(:: Type{<: Number}, x) = only(x)
+_scalar_convert(:: Type, x) = x
+
 (f :: RationalPencil)(ω) = sum(
     a * ω ^ (i - 1) for (i, a) in enumerate(f.poly);
-    init = f.L' * ((ω * I - f.c * f.M) \ f.R)
+    init = _scalar_convert(eltype(f.poly), f.L' * ((ω * I - f.c * f.M) \ f.R))
 )
 
 Base.eltype(:: Type{RationalPencil{TP, TC, TL, TM, TR}}) where {TP, TC, TL, TM, TR} = promote_type(

@@ -489,11 +489,11 @@ function scalar_aaa(
     xs[αs], ws_best, fs[αs]
 end
 
-# slow but accurate
+# slow but allegedly accurate
 function xmul(A :: Matrix, b :: Vector)
     c = Vector{promote_type(eltype(A), eltype(b))}(undef, size(A, 1))
-    @inbounds for j in eachindex(c)
-        c[j] = sum_kbn([p * q for (p, q) in zip((@view A[j, :]), b)])
+    @inbounds for (j, a) in enumerate(eachrow(A))
+        c[j] = sum_kbn([p * q for (p, q) in zip(a, b)])
     end
     return c
 end
