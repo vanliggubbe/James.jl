@@ -2,7 +2,7 @@
 
 Construction of Markovian embedding for a generic continuous-variable open quantum system. Generalization of work [arXiv:2604.06466](https://arxiv.org/abs/2604.06466) with hybrid classical-quantum master equation ([PRA **107**, 062206 (2023)](https://journals.aps.org/pra/abstract/10.1103/PhysRevA.107.062206)) instead of Lindblad equation.
 
-Library is under intense construction! Many things may and will change.
+Library is under a could-be-more-intense construction! Things may and will change, but not soon.
 
 ## Current functional
 
